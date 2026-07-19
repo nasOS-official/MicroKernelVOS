@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -5,10 +6,13 @@
 #include "debug/fb.h"
 #include "paging.h"
 #include <snprintf.h>
-#include <process.h>
+#include <string.h>
+#include <tasks.h>
 #include <limine_requests.h>
 #include <syscall.h>
 #include <panic.h>
+#include <abstractions.h>
+#include "bootstrap/elfloader/elf.h"
 
 // Set the base revision to 6, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -111,19 +115,19 @@ void test_allocator(struct limine_framebuffer *framebuffer) {
     }
 
     // Step 6: Validate page traversal mapping engine via page_tree_get
-    uint64_t pml4_physical;
-    asm volatile("mov %%cr3, %0" : "=r"(pml4_physical));
-    page_tree tree = page_tree_get(pml4_physical, (uint64_t)ptr1);
-    log("Inspecting the page table tree for ptr1:", framebuffer);
+    // uint64_t pml4_physical;
+    // asm volatile("mov %%cr3, %0" : "=r"(pml4_physical));
+    // // page_tree tree = page_tree_get(pml4_physical, (uint64_t)ptr1);
+    // log("Inspecting the page table tree for ptr1:", framebuffer);
 
-    snprintf(buf, sizeof(buf), "  Deepest resolved level (Expected 1): %d", tree.min_level_exists);
-    log(buf, framebuffer);
+    // snprintf(buf, sizeof(buf), "  Deepest resolved level (Expected 1): %d", tree.min_level_exists);
+    // log(buf, framebuffer);
 
-    snprintf(buf, sizeof(buf), "  PT entry Present bit (Expected 1): %d", tree.pt.present);
-    log(buf, framebuffer);
+    // snprintf(buf, sizeof(buf), "  PT entry Present bit (Expected 1): %d", tree.pt.present);
+    // log(buf, framebuffer);
 
-    snprintf(buf, sizeof(buf), "  Physical PFN mapped: 0x%llx", (unsigned long long)tree.pt.address);
-    log(buf, framebuffer);
+    // snprintf(buf, sizeof(buf), "  Physical PFN mapped: 0x%llx", (unsigned long long)tree.pt.address);
+    // log(buf, framebuffer);
 
     if (free_user_pages((uint64_t)ptr4, 1, 0) != 0) {
         log("[CRITICAL] Failed to free user page 4 (ptr4)!", framebuffer);
@@ -132,6 +136,20 @@ void test_allocator(struct limine_framebuffer *framebuffer) {
 
     log("--- MEMORY ALLOCATOR TEST COMPLETE ---", framebuffer);
 }
+
+
+struct IretFrame
+{
+    uint64_t rip;
+    uint64_t cs;
+    uint64_t rflags;
+    uint64_t rsp;
+    uint64_t ss;
+} __attribute__((packed));
+
+
+#define USER_CS 0x1B
+#define USER_SS 0x23
 
 
 void kmain(void) {
@@ -193,7 +211,46 @@ void kmain(void) {
     }
     syscall_init();
     alloc_init(memmmap_request.response);
-    test_allocator(framebuffer);
+    //tmp
+    task_control_block_t* task = kernel_malloc(sizeof(task_control_block_t));
+    process_t* proc = kernel_malloc(sizeof(process_t));
+
+
+    task->process = proc;
+    proc->rights |= PROC_DRIVER_RIGHT;
+    proc->rights |= PROC_MEM_FRAMEBUFFER_RIGHT;
+    set_thread_info_ptr(task);
+    if(module_request.response->module_count == 0){
+        log("ERR", framebuffer);
+    }
+
+
+   
+    uint64_t rip = (uint64_t)loadelf(module_request.response->modules[0]->address, module_request.response->modules[0]->size);
+    uint64_t addr = (uint64_t)alloc_user_pages(0x1000000, 2, 0);
+    if (addr == 0){
+        log("ERR", framebuffer);
+        hcf();
+    }
+
+
+    struct IretFrame frame = {
+        .rip = rip,
+        .cs = USER_CS,
+        .rflags = 0x202,
+        .rsp = addr + 0x2000,
+        .ss = USER_SS,
+    };
+    task->kernel_SP = alloc_kernel_stack();
+    asm volatile(
+        "mov %0, %%rsp\n\t"
+        "iretq\n\t"
+        :
+        : "r"(&frame)
+        : "memory"
+    );
+
+
     /*
 
     log("Detected video modes:", framebuffer);

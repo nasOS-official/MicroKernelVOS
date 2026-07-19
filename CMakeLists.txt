@@ -5,13 +5,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_ASM_COMPILER clang)
-set(CMAKE_C_FLAGS "-ffreestanding -nostdlib -O0 -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -m64 -march=x86-64 --target=x86_64-pc-none-elf -fno-pie -mcmodel=kernel -mno-mmx -mno-sse -mno-sse2 -mno-avx -mno-avx2 -nostdinc")
+set(CMAKE_C_FLAGS "-ffreestanding -nostdlib -O2 -Wall -Wextra -Werror -mgeneral-regs-only -mno-red-zone -m64 -march=x86-64 --target=x86_64-pc-none-elf -fno-pie -mcmodel=kernel -mno-mmx -mno-sse -mno-sse2 -mno-avx -mno-avx2 -nostdinc")
 set(CMAKE_ASM_FLAGS "-march=x86-64 -mno-red-zone --target=x86_64-pc-none-elf -fno-pie")
 
 include_directories(include)
 
 add_custom_target(run
-    COMMAND qemu-system-x86_64 -cdrom image.iso -enable-kvm -m 512
+    COMMAND qemu-system-x86_64 -cdrom image.iso -enable-kvm -m 512 -d int,guest_errors,cpu_reset
     DEPENDS image.iso
 )
 
@@ -38,10 +38,10 @@ add_executable(kernel.bin
     debug/fb.c
     limine_requests/limine_requests.c
     paging/paging.c
-    tasks/task.c
     syscall/x86_64/syscall.c
-    syscall/x86_64/syscall.s
+    syscall/x86_64/syscall.S
     panic/panic.c
+    bootstrap/elfloader/elfloader.c
     main.c
 )
 

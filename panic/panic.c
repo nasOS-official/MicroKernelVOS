@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "limine_requests.h"
 #include "stdbool.h"
 #include "../debug/fb.h"

@@ -3,3 +3,4 @@ limine-*
 .cache
 CMakeCache.txt
 Makefile
+__cmake_systeminformation

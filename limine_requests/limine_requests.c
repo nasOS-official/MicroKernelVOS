@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include <stdint.h>
 #include <limine.h>
 #include <limine_requests.h>
@@ -28,6 +29,12 @@ volatile struct limine_stack_size_request stack_request = {
 __attribute__((used, section(".limine_requests")))
 volatile struct limine_hhdm_request hhdm_request = {
     .id = LIMINE_HHDM_REQUEST_ID,
+    .revision = 0,
+};
+
+__attribute__((used, section(".limine_requests")))
+volatile struct limine_module_request module_request = {
+    .id = LIMINE_MODULE_REQUEST_ID,
     .revision = 0,
 };
 

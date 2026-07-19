@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "paging.h"
 #include <stddef.h>
 #include <stdbool.h>
@@ -6,8 +7,11 @@
 #include <limine_requests.h>
 #include <snprintf.h>
 #include "../debug/fb.h"
+#include <math.h>
 #include <panic.h>
-#include <process.h>
+#include <tasks.h>
+#include <abstractions.h>
+#include <stdlib.h>
 
 
 struct Page* buddy_alloc_ptr[MAX_ORDER];
@@ -65,9 +69,27 @@ void alloc_init(struct limine_memmap_response* memmap) {
     }
 
     pages_map = (struct Page*)(hhdm_offset + base_addr);
-
+    uint64_t start_sel = 0;
     for (uint64_t i = 0; i < total_pages; i++) {
         pages_map[i].flags = 0;
+        for (uint64_t x = start_sel; x < memmap->entry_count; x++){
+            if (memmap->entries[x]->base >> 12 <= i && (memmap->entries[x]->base + memmap->entries[x]->length) >> 12 > i){
+                start_sel = x;
+                    switch (memmap->entries[x]->type) {
+                        case LIMINE_MEMMAP_RESERVED:
+                        case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+                        case LIMINE_MEMMAP_ACPI_NVS:
+                        case LIMINE_MEMMAP_FRAMEBUFFER:
+                        case LIMINE_MEMMAP_RESERVED_MAPPED:
+                            pages_map[i].flags |= PAGE_HARDWARE;
+                            break;
+                        default:
+                            break;
+                    }
+
+                break;
+            }
+        }
         pages_map[i].order = 0;
         pages_map[i].free_node.next = NULL;
         pages_map[i].free_node.prev = NULL;
@@ -224,8 +246,6 @@ bool scan_pages(uint64_t vaddr, uint64_t count, uint64_t pml4_phys_ptr, bool sea
         }
     }
 
-
-
     return true;
     
 }
@@ -280,19 +300,19 @@ int64_t free_ki_pages(uint64_t user_vaddr, uint64_t count, bool user, uint64_t f
                         if (pages_map[page].flags & PAGE_FREE){
                             panic();
                         }
-
                         //todo: remove free mem tables if entire region is free
                         pt_table[d].present = 0;
                         pt_table[d].address = 0;                        
                         asm volatile("invlpg (%0)" :: "r"(VIRT_ADDR(a, b, c, d)) : "memory");
 
+                        if (!(pages_map[page].flags & PAGE_HARDWARE)){
+                            pages_map[page]._allocated.counters--;
 
-                        pages_map[page]._allocated.counters--;
-
-                        if (pages_map[page]._allocated.counters == 0){
-                            free_buddy_pages(&pages_map[page], 0);
+                            if (pages_map[page]._allocated.counters == 0){
+                                free_buddy_pages(&pages_map[page], 0);
+                            }
                         }
-                        
+
 
                     }
                 }
@@ -408,24 +428,48 @@ void* alloc_ki_pages(uint64_t user_vaddr, uint64_t count, bool user, uint64_t fl
     return (void*)user_vaddr;
 }
 
+
 void* map_ki_hardware(uint64_t user_vaddr,	uint64_t count, uint64_t phys_page, uint64_t mem_type, uint64_t flags, bool user){
     uint64_t pml4_physical;
     asm volatile("mov %%cr3, %0" : "=r"(pml4_physical));
 
-    //todo: check rights for process (add to rights control controls for available driver mem types)
+    task_control_block_t* tcb = get_thread_info_ptr();
+    if (!(tcb->process->rights & PROC_DRIVER_RIGHT)){
+        return NULL;
+    }
+
+    switch (mem_type) {
+        case LIMINE_MEMMAP_RESERVED:
+            if (!(tcb->process->rights & PROC_MEM_RESERVED_RIGHT))
+                return NULL;
+            break;
+        case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+            if (!(tcb->process->rights & PROC_MEM_ACPI_TABLE_RIGHT))
+                return NULL;
+            break;
+        case LIMINE_MEMMAP_ACPI_NVS:
+            if (!(tcb->process->rights & PROC_MEM_ACPI_NVS_RIGHT))
+                return NULL;
+            break;
+        case LIMINE_MEMMAP_FRAMEBUFFER:
+            if (!(tcb->process->rights & PROC_MEM_FRAMEBUFFER_RIGHT))
+                return NULL;
+            break;
+        case LIMINE_MEMMAP_RESERVED_MAPPED:
+            if (!(tcb->process->rights & PROC_MEM_RESERVER_MAPPED_RIGHT))
+                return NULL;
+            break;
+        default:
+            return 0;
+    }
+
+
 
     bool readonly = false;
     if (mem_type == LIMINE_MEMMAP_ACPI_RECLAIMABLE || flags & READONLY_FLAG){
         readonly = true;
     }
 
-    switch (mem_type) {
-        case LIMINE_MEMMAP_USABLE:
-        case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
-        case LIMINE_MEMMAP_BAD_MEMORY:
-        case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
-            return NULL;
-    }
     
     if ((user && user_vaddr + (count * 0x1000) >= 0x0000800000000000) || (!user && user_vaddr < 0x0000800000000000)) {
         return NULL;
@@ -523,4 +567,216 @@ void* map_ki_hardware(uint64_t user_vaddr,	uint64_t count, uint64_t phys_page, u
         }
     }
     return (void*)user_vaddr;
+}
+
+uint64_t map_hardware_user(uint64_t user_vaddr,	uint64_t count, uint64_t phys_page, uint64_t mem_type, uint64_t flags){
+    return (uint64_t)map_ki_hardware(user_vaddr, count, phys_page, mem_type, flags, 1);
+}
+
+uint64_t alloc_kernel_stack(){
+    struct Page* phys_page = alloc_pages(2);
+    if (!phys_page) panic();
+
+    uint64_t paddr = hhdm_request.response->offset + ((phys_page - pages_map) * 0x1000);
+    return paddr;
+}
+
+
+typedef struct alloc_t {
+    uint64_t magic; //0xDEADBEEF
+    struct arena_t* arena;
+    uint64_t size;
+    struct alloc_t* prev;
+    struct alloc_t* next;
+} __attribute__((aligned(16))) alloc_t;
+
+typedef struct arena_t {
+    uint64_t magic; //0xDEADF00D
+    uint64_t order;
+    uint64_t allocations;
+    alloc_t* first;
+    uint64_t largest_free;
+    uint64_t free_space;
+    struct arena_t* prev;
+    struct arena_t* next;
+} __attribute__((aligned(16))) arena_t;
+
+arena_t* first_arena = NULL;
+
+#define ALIGN_UP(num, base) ((num) + (((base) - ((num) % (base))) % (base)))
+
+void* kernel_malloc(uint64_t size){
+    uint64_t real_size = ALIGN_UP(size + sizeof(alloc_t), 16);
+
+    if (first_arena == NULL){
+        uint8_t order = clog2((real_size + sizeof(arena_t) + 4095) >> 12);
+        struct Page* phys_page = alloc_pages(order);
+        if (phys_page == NULL)
+            return NULL;
+        uint64_t paddr = (phys_page - pages_map);
+        struct arena_t* arena = (void*)(hhdm_request.response->offset + (paddr << 12));
+        arena->order = order;
+        arena->magic = 0xDEADF00D;
+        arena->allocations = 0;
+        arena->first = NULL;
+        arena->largest_free = (1ULL << (order + 12)) - sizeof(arena_t);
+        arena->free_space = arena->largest_free;
+        arena->prev = NULL;
+        arena->next = NULL;
+        first_arena = arena;
+    }
+
+    struct arena_t* current_arena = first_arena;
+    bool flag = false;
+    while (true) {
+        if (current_arena->largest_free >= real_size){
+            flag = true;
+            break;
+        }
+        if (current_arena->next != NULL){
+            current_arena = current_arena->next;
+        } else {
+            break;
+        }
+    }
+
+    if (flag == false){
+        uint8_t order = clog2((real_size + sizeof(arena_t) + 4095) >> 12);
+        struct Page* phys_page = alloc_pages(order);
+        if (phys_page == NULL)
+            return NULL;
+        uint64_t paddr = (phys_page - pages_map);
+        struct arena_t* arena = (void*)(hhdm_request.response->offset + (paddr << 12));
+        arena->order = order;
+        arena->magic = 0xDEADF00D;
+        arena->allocations = 0;
+        arena->first = NULL;
+        arena->largest_free = (1ULL << (order + 12)) - sizeof(arena_t);
+        arena->free_space = arena->largest_free;
+        arena->prev = current_arena;
+        arena->next = NULL;
+        if (current_arena != NULL){
+            current_arena->next = arena;
+        }
+        current_arena = arena;
+    }
+    alloc_t* current_alloc_block = current_arena->first;
+    alloc_t* new_alloc_block = NULL;
+
+    while (true) {
+        if (current_alloc_block == NULL){ 
+            // first elem
+            new_alloc_block = (void*)((uint8_t*)current_arena + sizeof(arena_t));
+            new_alloc_block->prev = NULL;
+            new_alloc_block->next = NULL;
+            current_arena->first = new_alloc_block;
+            break;
+        } else if (current_arena->first == current_alloc_block && (uint64_t)((uint8_t*)current_arena->first - ((uint8_t*)current_arena + sizeof(arena_t))) >= real_size){
+            // before first
+            new_alloc_block = (void*)((uint8_t*)current_arena + sizeof(arena_t));
+            new_alloc_block->prev = NULL;
+            new_alloc_block->next = current_arena->first;
+            current_arena->first = new_alloc_block;
+            new_alloc_block->next->prev = new_alloc_block;
+            break;
+        } else if (current_alloc_block->next == NULL){
+            // at the end
+            new_alloc_block = (void*)((uint8_t*)current_alloc_block + current_alloc_block->size);
+            current_alloc_block->next = new_alloc_block;
+            new_alloc_block->prev = current_alloc_block;
+            new_alloc_block->next = NULL;
+            break;
+        } else if ((uint64_t)((uint8_t*)current_alloc_block->next - ((uint8_t*)current_alloc_block + current_alloc_block->size)) >= real_size){
+            // between elems
+            new_alloc_block = (void*)((uint8_t*)current_alloc_block + current_alloc_block->size);
+            current_alloc_block->next->prev = new_alloc_block;
+            new_alloc_block->next = current_alloc_block->next;
+            new_alloc_block->prev = current_alloc_block;
+            current_alloc_block->next = new_alloc_block;
+            break;
+        }
+
+        current_alloc_block = current_alloc_block->next;
+    }
+
+    new_alloc_block->size = real_size;
+    new_alloc_block->arena = current_arena;
+    new_alloc_block->magic = 0xDEADBEEF;
+    current_arena->allocations++;
+    current_arena->free_space -= real_size;
+    
+    current_alloc_block = current_arena->first;
+
+    uint64_t largest_free = (uint64_t)current_alloc_block - ((uint64_t)current_arena + sizeof(arena_t));
+    while (true) {
+        if (current_alloc_block->next != NULL){
+            largest_free = MAX(largest_free, (uint64_t)current_alloc_block->next - ((uint64_t)current_alloc_block + current_alloc_block->size));
+            current_alloc_block = current_alloc_block->next;
+        } else {
+            largest_free = MAX(largest_free,  (1ULL << (current_arena->order + 12)) - ((uint64_t)current_alloc_block + current_alloc_block->size - (uint64_t)current_arena));
+            break;
+        }
+    }
+    current_arena->largest_free = largest_free;
+    
+
+    return (uint8_t*)new_alloc_block + sizeof(alloc_t);
+}
+
+
+void kernel_free(void* addr){
+    if (addr == NULL){
+        return;
+    }
+    alloc_t* object = (void*)((uint8_t*)addr - sizeof(alloc_t));
+    if (object->magic != 0xDEADBEEF){
+        return;
+    }
+    object->magic = 0;
+
+    if (object->prev != NULL) {
+        object->prev->next = object->next;
+    } else {
+        object->arena->first = object->next;
+    }
+
+    if (object->next != NULL) {
+        object->next->prev = object->prev;
+    }
+
+    arena_t* arena = object->arena;
+    if (arena->magic != 0xDEADF00D){
+        panic();
+    }
+    arena->allocations--;
+    arena->free_space += object->size;
+
+    if (arena->allocations == 0){
+        if (arena->prev != NULL){
+            arena->prev->next = arena->next;
+        } else {
+            first_arena = arena->next;
+        }
+        
+        if (arena->next != NULL){
+            arena->next->prev = arena->prev;
+        }
+        arena->magic = 0;
+        free_buddy_pages(&pages_map[((uint64_t)arena - hhdm_request.response->offset) >> 12], arena->order);
+    } else {
+
+        alloc_t* current_alloc_block = arena->first;
+
+        uint64_t largest_free = (uint64_t)current_alloc_block - ((uint64_t)arena + sizeof(arena_t));
+        while (true) {
+            if (current_alloc_block->next != NULL){
+                largest_free = MAX(largest_free, (uint64_t)current_alloc_block->next - ((uint64_t)current_alloc_block + current_alloc_block->size));
+                current_alloc_block = current_alloc_block->next;
+            } else {
+                largest_free = MAX(largest_free,  (1ULL << (arena->order + 12)) - ((uint64_t)current_alloc_block + current_alloc_block->size - (uint64_t)arena));
+                break;
+            }
+        }
+        arena->largest_free = largest_free;
+    }
 }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #ifndef __ALLOC_H
 #define __ALLOC_H
 
@@ -89,5 +90,15 @@ page_tree page_tree_get(uint64_t pml4_phys_ptr, uint64_t virt_ptr);
 
 int64_t free_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
 int64_t free_kernel_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
+
+uint64_t map_hardware_user(uint64_t user_vaddr,	uint64_t count, uint64_t pfn, uint64_t mem_type, uint64_t flags);
+
+
+uint64_t alloc_kernel_stack();
+
+void* kernel_malloc(uint64_t size);
+void kernel_free(void* addr);
+
+
 
 #endif

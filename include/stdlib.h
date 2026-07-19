@@ -8,4 +8,6 @@ int rand();
 
 void srand(uint32_t seed);
 
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
 #endif

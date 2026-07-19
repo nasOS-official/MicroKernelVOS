@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 #define IA32_EFER 0xC0000080
 #define IA32_STAR 0xC0000081
 #define IA32_LSTAR 0xC0000082
