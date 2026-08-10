@@ -4,3 +4,4 @@ limine-*
 CMakeCache.txt
 Makefile
 __cmake_systeminformation
+.~lock.*

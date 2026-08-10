@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "abstractions.h"
+#include "limine_requests.h"
 #include "paging.h"
 #include "stdbool.h"
 #include "stddef.h"
+#include <math.h>
 #include <stdint.h>
 #include <tasks.h>
 #include <cpu.h>
+#include "../syscall/x86_64/msr.h"
+#include "../debug/fb.h"
 
 #define MAX_PRIORITY 32
 
@@ -91,7 +95,8 @@ uint64_t thread_create(uint32_t pid, uint8_t* entry_point, uint8_t* stack_pointe
     addr->kernel_SP = alloc_kernel_stack();
     addr->user_SP = (uint64_t)stack_pointer;
     addr->user_IP = (uint64_t)entry_point;
-    addr->state = THREAD_WAITING_TO_START;
+    addr->state = THREAD_RUNNING;
+    addr->wait_for_tick = 0;
     addr->prev_proc_thread = cur_proc->last_proc_thread;
     addr->next_proc_thread = NULL;
     if (cur_proc->last_proc_thread != NULL){
@@ -131,9 +136,9 @@ uint64_t process_getrights(uint32_t pid){
     return ptr->rights;
 }
 
-void process_setrights(uint32_t pid, uint64_t rights){
+int64_t process_setrights(uint32_t pid, uint64_t rights){
     if ((get_thread_info_ptr()->process->rights & PROC_PROCLOCADER_RIGHT) == 0){
-        return;
+        return -1;
     }
     process_t* ptr = process_first;
 
@@ -144,10 +149,11 @@ void process_setrights(uint32_t pid, uint64_t rights){
         ptr = ptr->next;
     }
     if (ptr == NULL){
-        return;
+        return -1;
     }
 
     ptr->rights = rights;
+    return 0;
 }
 
 uint64_t thread_gettid(){
@@ -183,13 +189,14 @@ task_control_block_t* find_thread(uint64_t tid){
     return current_thread;
 }
 
-void thread_setaffinity(uint64_t tid, int64_t affinity){
+int64_t thread_setaffinity(uint64_t tid, int64_t affinity){
     task_control_block_t* current_thread = find_thread(tid);
     
     if (current_thread == NULL){
-        return;
+        return -2;
     }
     current_thread->affinity = affinity;
+    return 0;
 }
 
 
@@ -212,3 +219,20 @@ thread_state_t thread_getstate(uint64_t tid){
     
     return current_thread->state;
 }
+
+void start_sched(){
+    set_kernel_stack((void*)priority_list[0]->block->kernel_SP);
+    
+}
+
+// extern uint64_t tsc_ticks_per_ms;
+// extern uint64_t read_tsc();
+// extern uint64_t lapic_base;
+
+// void sched_handler(){
+//     log("HELLO SCHED!", framebuffer_request.response->framebuffers[0]);
+//     uint64_t next_deadline = read_tsc() + tsc_ticks_per_ms;
+//     wrmsr(IA32_TSC_DEADLINE, next_deadline);
+
+//     *(volatile uint32_t*)(lapic_base + 0xB0) = 0;
+// }

@@ -10,4 +10,7 @@ void srand(uint32_t seed);
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+
 #endif

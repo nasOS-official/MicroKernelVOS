@@ -47,7 +47,7 @@ void srand(unsigned int seed)
 
 void _start(void){
 
-    void* addr = (void*)syscall6(7, 0x1000000000, 1000, 0xfd000000 >> 12, 7, 0, 0);
+    void* addr = (void*)syscall6(30, 0x1000000000, 1000, 0xfd000000 >> 12, 7, 0, 0);
 
     for(;;){
         for (uint64_t x = 0; x < 1000*4096; x++){

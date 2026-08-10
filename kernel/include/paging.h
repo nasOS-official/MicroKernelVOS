@@ -82,7 +82,8 @@ extern uint64_t heap_current;
 void alloc_init(struct limine_memmap_response* memmap);
 struct Page* alloc_pages(uint8_t order);
 void* alloc_kernel_pages(uint64_t count, uint64_t flags);
-void* alloc_ki_pages(uint64_t user_vaddr, uint64_t count, bool user, uint64_t flags);
+// void* alloc_ki_pages(uint64_t user_vaddr, uint64_t count, bool user, uint64_t flags);
+bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, bool user);
 void* alloc_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
 
 void page_set(uint64_t pml4_phys_ptr, uint64_t virt_ptr, int level, page_table_entry value);

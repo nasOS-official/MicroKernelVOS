@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <stdint.h>
 #define IA32_EFER 0xC0000080
 #define IA32_STAR 0xC0000081
 #define IA32_LSTAR 0xC0000082
@@ -14,3 +15,6 @@
 #define IA32_APIC_BASE 0x1B
 #define IA32_MCG_CAP 0x179
 #define IA32_MCG_STATUS 0x17A
+#define IA32_TSC_DEADLINE 0x6E0
+
+void wrmsr(uint32_t addr, uint64_t data);

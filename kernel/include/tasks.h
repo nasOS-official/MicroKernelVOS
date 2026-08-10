@@ -21,7 +21,6 @@ typedef enum {
     THREAD_READY,
     THREAD_RUNNING,
     THREAD_BLOCKED,
-    THREAD_WAITING_TO_START,
     THREAD_DEAD
 } thread_state_t;
 
@@ -56,5 +55,14 @@ typedef struct task_control_block_t {
     struct task_control_block_t* next_proc_thread;
 } task_control_block_t;
 
+uint32_t process_create();
+uint64_t thread_create(uint32_t pid, uint8_t* entry_point, uint8_t* stack_pointer, uint8_t priority);
+uint64_t process_getrights(uint32_t pid);
+int64_t process_setrights(uint32_t pid, uint64_t rights);
+uint64_t thread_gettid();
+uint32_t process_getpid();
+int64_t thread_setaffinity(uint64_t tid, int64_t affinity);
+int64_t thread_getaffinity(uint64_t tid);
+thread_state_t thread_getstate(uint64_t tid);
 
 #endif

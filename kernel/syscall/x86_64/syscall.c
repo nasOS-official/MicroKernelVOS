@@ -23,6 +23,20 @@ struct idt_ptr {
 
 struct idt_entry idt[256];
 
+struct tss_64 {
+    uint32_t reserved0;
+    uint64_t rsp0;
+    uint64_t rsp1;
+    uint64_t rsp2;
+    uint64_t reserved1;
+    uint64_t ist[7];
+    uint64_t reserved2;
+    uint16_t reserved3;
+    uint16_t iopm_offset;
+} __attribute__((packed));
+
+struct tss_64 tss;
+
 void idt_set_gate(uint8_t vector, uint64_t handler, uint8_t flags) {
     idt[vector].offset_low  = (uint16_t)(handler & 0xFFFF);
     idt[vector].selector    = 0x08;
@@ -34,14 +48,15 @@ void idt_set_gate(uint8_t vector, uint64_t handler, uint8_t flags) {
 }
 
 extern void exception_entry(void); 
+extern void sched_entry(void);
 
 void init_idt(void) {
     struct idt_ptr idt_p;
 
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 32; i++) {
         idt_set_gate(i, (uint64_t)&exception_entry, 0x8E);
     }
-
+    idt_set_gate(0xEF, (uint64_t)&sched_entry, 0x8E);
     idt_p.limit = (sizeof(struct idt_entry) * 256) - 1;
     idt_p.base  = (uint64_t)&idt;
 
@@ -80,22 +95,30 @@ int64_t syscall_handler(struct syscall_frame* regs){
     uint64_t arg6 = regs->r9;
     (void)arg6;
     switch (syscall_num) {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-        case 4:
-        case 5:
-        case 6:
-            return -1;
-            break;
-        case 7:
+        case 30:
             return map_hardware_user(arg1,  arg2, arg3, arg4, arg5);
-            break;
-        case 8:
+        case 31:
             return (int64_t)alloc_user_pages(arg1, arg2, arg3);
-        case 9:
+        case 32:
             return free_user_pages(arg1, arg2, arg3);
+        case 60:
+            return process_create();
+        case 61:
+            return process_setrights(arg1, arg2);
+        case 62:
+            return process_getrights(arg1);
+        case 64:
+            return process_getpid();
+        case 90:
+            return thread_create(arg1, (uint8_t*)arg2, (uint8_t*)arg3, arg4);
+        case 92:
+            return thread_gettid();
+        case 93:
+            return thread_getstate(arg1);
+        case 94:
+            return thread_setaffinity(arg1, arg2);
+        case 95:
+            return thread_getaffinity(arg1);
         default:
             return -1;
             break;
@@ -131,12 +154,14 @@ struct gdt_ptr {
     uint64_t base;
 } __attribute__((packed));
 
-uint64_t my_gdt[5] = {
+uint64_t my_gdt[7] = {
     0x0000000000000000ULL,
     0x00AF9A000000FFFFULL,
     0x00CF92000000FFFFULL,
     0x00AFFB000000FFFFULL,
-    0x00CFF2000000FFFFULL
+    0x00CFF2000000FFFFULL,
+    0,
+    0
 };
 
 void init_gdt(void) {
@@ -162,9 +187,51 @@ void init_gdt(void) {
     );
 }
 
+void set_kernel_stack(void* kernel_SP){
+    tss.rsp0 = (uint64_t)&kernel_SP;
+}
+
+void init_tss() {
+    unsigned char* ptr = (unsigned char*)&tss;
+    for (unsigned int i = 0; i < sizeof(struct tss_64); i++) {
+        ptr[i] = 0;
+    }
+
+  
+    tss.rsp0 = 0;
+
+    tss.iopm_offset = sizeof(struct tss_64);
+
+    uint64_t base = (uint64_t)&tss;
+    uint32_t limit = sizeof(struct tss_64) - 1;
+
+    my_gdt[5] = (limit & 0xFFFF) | 
+                ((base & 0xFFFFFF) << 16) | 
+                (0x89ULL << 40) |                  
+                (((uint64_t)limit & 0xF0000) << 32) | 
+                (((base & 0xFF000000ULL) >> 24) << 56);
+
+    my_gdt[6] = base >> 32;
+
+    struct gdt_ptr gdt_p;
+    gdt_p.limit = sizeof(my_gdt) - 1;
+    gdt_p.base  = (uint64_t)&my_gdt;
+
+    asm volatile (
+        "lgdt %0\n\t"
+        :
+        : "m"(gdt_p)
+        : "memory"
+    );
+
+
+    uint16_t tss_selector = 0x28;
+    asm volatile ("ltr %0" : : "r"(tss_selector));
+}
 
 void syscall_init(){
     init_idt();
+    init_tss();
     init_gdt();
     uint64_t efer = rdmsr(IA32_EFER);
     efer |= EFER_SCE;

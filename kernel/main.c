@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <limine.h>
+#include "cpu.h"
 #include "debug/fb.h"
 #include "paging.h"
 #include <snprintf.h>
@@ -211,7 +212,10 @@ void kmain(void) {
     }
     syscall_init();
     alloc_init(memmmap_request.response);
-    //tmp
+
+
+    // test_allocator(framebuffer);
+    // //tmp
     task_control_block_t* task = kernel_malloc(sizeof(task_control_block_t));
     process_t* proc = kernel_malloc(sizeof(process_t));
 
@@ -241,7 +245,9 @@ void kmain(void) {
         .rsp = addr + 0x2000,
         .ss = USER_SS,
     };
+    (void)frame;
     task->kernel_SP = alloc_kernel_stack();
+    set_kernel_stack((void*)task->kernel_SP);
     asm volatile(
         "mov %0, %%rsp\n\t"
         "iretq\n\t"
@@ -250,24 +256,7 @@ void kmain(void) {
         : "memory"
     );
 
-
-    /*
-
-    log("Detected video modes:", framebuffer);
-    for (uint64_t x = 0; x < framebuffer_request.response->framebuffer_count; x++){
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Screen number: %llu Mode count: %llu", x, framebuffer_request.response->framebuffers[x]->mode_count);
-        log(buf, framebuffer);
-        for (uint64_t y = 0; y < framebuffer_request.response->framebuffers[x]->mode_count; y++){
-            char bufa[128];
-            uint64_t w = framebuffer_request.response->framebuffers[x]->modes[y]->width;
-            uint64_t h = framebuffer_request.response->framebuffers[x]->modes[y]->height;
-            uint64_t bpp = framebuffer_request.response->framebuffers[x]->modes[y]->bpp;
-            snprintf(bufa, sizeof(bufa), "%llux%llu@%llu", w, h, bpp);
-            log(bufa, framebuffer);
-        }
-    }
-    */
+    cpu_init();
 
     hcf();
 }

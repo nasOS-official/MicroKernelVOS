@@ -6,4 +6,5 @@
 
 void set_thread_info_ptr(task_control_block_t* ptr);
 task_control_block_t* get_thread_info_ptr();
+void set_kernel_stack(void* kernel_SP);
 #endif

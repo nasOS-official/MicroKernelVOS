@@ -61,6 +61,6 @@ typedef struct {
     uint64_t sh_entsize;
 } s_header;
 
-void* loadelf(uint8_t* addr, uint64_t lenght);
+void* loadelf(const uint8_t* addr, uint64_t lenght);
 
 #endif
