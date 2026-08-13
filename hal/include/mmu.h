@@ -21,7 +21,7 @@ typedef struct {
     const mmu_level_desc_t *levels;
 } mmu_layout_t;
 
-typedef struct page_table_entry1 {
+typedef struct page_table_entry {
     uint64_t size;
     uintptr_t address;
     uint64_t present      : 1;
@@ -38,15 +38,15 @@ typedef struct page_table_entry1 {
     uint64_t writethrough : 1;
     uint64_t ispage       : 1;
     uint64_t ishugepage   : 1;
-} page_table_entry1;
+} page_table_entry;
 
 
 mmu_layout_t* mmu_get_layout();
 
-uint64_t mmu_get_elem_info(uintptr_t table_ptr, uint64_t num, uint8_t level, struct page_table_entry1 *page_table_entry);
+uint64_t mmu_get_elem_info(uintptr_t table_ptr, uint64_t num, uint8_t level, struct page_table_entry *page_table_entry);
 
 
-uint64_t mmu_set_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level, struct page_table_entry1 *page_table_entry);
+uint64_t mmu_set_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level, struct page_table_entry *page_table_entry);
 
 uintptr_t mmu_get_top_table();
 

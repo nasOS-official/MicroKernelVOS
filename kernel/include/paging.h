@@ -32,29 +32,6 @@
 
 #define HEAP_ADDR 0xffffff0000000000
 
-typedef struct page_table_entry {
-    uint64_t present    : 1;
-    uint64_t writable   : 1;
-    uint64_t user       : 1;
-    uint64_t pwt        : 1;
-    uint64_t pcd        : 1;
-    uint64_t accessed   : 1;
-    uint64_t dirty      : 1;
-    uint64_t pat        : 1;
-    uint64_t global     : 1;
-    uint64_t available1 : 3;
-    uint64_t address    : 40;
-    uint64_t available2 : 11;
-    uint64_t no_execute : 1;
-} page_table_entry;
-
-typedef struct page_tree {
-    uint8_t min_level_exists;
-    page_table_entry pml4;
-    page_table_entry pdpt;
-    page_table_entry pd;
-    page_table_entry pt;
-} page_tree;
 
 
 struct Page {
@@ -85,9 +62,6 @@ void* alloc_kernel_pages(uint64_t count, uint64_t flags);
 // void* alloc_ki_pages(uint64_t user_vaddr, uint64_t count, bool user, uint64_t flags);
 bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, bool user);
 void* alloc_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
-
-void page_set(uint64_t pml4_phys_ptr, uint64_t virt_ptr, int level, page_table_entry value);
-page_tree page_tree_get(uint64_t pml4_phys_ptr, uint64_t virt_ptr);
 
 int64_t free_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
 int64_t free_kernel_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);

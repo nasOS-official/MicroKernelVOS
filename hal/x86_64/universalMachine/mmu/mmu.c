@@ -48,7 +48,7 @@ mmu_layout_t* mmu_get_layout(){
 }
 
 
-uint64_t mmu_get_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level, struct page_table_entry1 *page_table_entry){
+uint64_t mmu_get_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level, struct page_table_entry *page_table_entry){
     uint64_t num;
     num = (v_addr >> mmu_levels_desc[level].shift) & mmu_levels_desc[level].mask;
     if (num >= 512 || level >= 4){
@@ -75,7 +75,7 @@ uint64_t mmu_get_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level,
 }
 
 
-uint64_t mmu_set_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level, struct page_table_entry1 *page_table_entry){
+uint64_t mmu_set_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level, struct page_table_entry *page_table_entry){
     uint64_t num;
     num = (v_addr >> mmu_levels_desc[level].shift) & mmu_levels_desc[level].mask;
     if (num >= 512 || level >= 4){

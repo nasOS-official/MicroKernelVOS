@@ -28,7 +28,7 @@ syscall_entry:
 
     movq %rsp, %rdi
 
-    call syscall_handler
+    call x86_syscall_handler
 
     addq $8, %rsp
 

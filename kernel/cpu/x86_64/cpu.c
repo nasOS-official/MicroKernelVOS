@@ -8,7 +8,7 @@ cpu_core_t* cpu_cores_list = NULL;
 uint32_t core_count = 0;
 
 
-void cpu_init(){
+void ki_cpu_init(){
     cpu_cores_list = kernel_malloc(sizeof(cpu_core_t));
     cpu_cores_list->cpu_id = 0;
     cpu_cores_list->current_thread = NULL;

@@ -1,10 +1,17 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
-#include "paging.h"
-#include "tasks.h"
-#include "msr.h"
+#include "cpu.h"
 #include <stdint.h>
-#include <syscall.h>
-#include <abstractions.h>
+#include "msr.h"
+
+uint32_t cpu_get_count(){
+    return 1;
+}
+
+void syscall_init();
+
+void cpu_init(uint32_t core){
+    (void) core;
+    syscall_init();
+}
 
 struct idt_entry {
     uint16_t offset_low;    
@@ -66,7 +73,8 @@ void init_idt(void) {
 
 extern void syscall_entry(void);
 
-struct syscall_frame {
+
+struct syscall_frame_x86 {
     uint64_t nothing;
     uint64_t r15;
     uint64_t r14;
@@ -85,45 +93,20 @@ struct syscall_frame {
     uint64_t rax;
 };
 
-int64_t syscall_handler(struct syscall_frame* regs){
-    uint64_t syscall_num = regs->rax;
-    uint64_t arg1 = regs->rdi;
-    uint64_t arg2 = regs->rsi;
-    uint64_t arg3 = regs->rdx;
-    uint64_t arg4 = regs->r10;
-    uint64_t arg5 = regs->r8;
-    uint64_t arg6 = regs->r9;
-    (void)arg6;
-    switch (syscall_num) {
-        case 30:
-            return map_hardware_user(arg1,  arg2, arg3, arg4, arg5);
-        case 31:
-            return (int64_t)alloc_user_pages(arg1, arg2, arg3);
-        case 32:
-            return free_user_pages(arg1, arg2, arg3);
-        case 60:
-            return process_create();
-        case 61:
-            return process_setrights(arg1, arg2);
-        case 62:
-            return process_getrights(arg1);
-        case 64:
-            return process_getpid();
-        case 90:
-            return thread_create(arg1, (uint8_t*)arg2, (uint8_t*)arg3, arg4);
-        case 92:
-            return thread_gettid();
-        case 93:
-            return thread_getstate(arg1);
-        case 94:
-            return thread_setaffinity(arg1, arg2);
-        case 95:
-            return thread_getaffinity(arg1);
-        default:
-            return -1;
-            break;
-    }
+extern int64_t syscall_handler(struct syscall_frame* regs);
+
+int64_t x86_syscall_handler(struct syscall_frame_x86* regs){
+    syscall_frame frame;
+    frame.syscall_num = regs->rax;
+    frame.arg1 = regs->rdi;
+    frame.arg2 = regs->rsi;
+    frame.arg3 = regs->rdx;
+    frame.arg4 = regs->r10;
+    frame.arg5 = regs->r8;
+    frame.arg6 = regs->r9;
+    return syscall_handler(&frame);
 }
+
 
 void wrmsr(uint32_t addr, uint64_t data){
     uint32_t eax = (uint64_t)(data) & 0xFFFFFFFF;
@@ -249,12 +232,12 @@ void syscall_init(){
 }
 
 
-void set_thread_info_ptr(task_control_block_t* ptr){
+
+void set_thread_info_ptr(struct task_control_block_t* ptr){
     wrmsr(IA32_GS_BASE, (uint64_t)ptr);
     wrmsr(IA32_KERNEL_GS_BASE, (uint64_t)ptr);
 }
 
-task_control_block_t* get_thread_info_ptr(){
-    return (task_control_block_t*)rdmsr(IA32_GS_BASE);
+struct task_control_block_t* get_thread_info_ptr(){
+    return (struct task_control_block_t*)rdmsr(IA32_GS_BASE);
 }
-

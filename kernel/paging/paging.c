@@ -9,8 +9,8 @@
 #include <math.h>
 #include <panic.h>
 #include <tasks.h>
-#include <abstractions.h>
 #include <stdlib.h>
+#include "cpu.h"
 #include "mmu.h"
 
 
@@ -21,18 +21,6 @@ uint64_t heap_current = HEAP_ADDR;
 uint64_t allocated_pages = 0;
 
 static mmu_layout_t* mmu_layout;
-
-
-#define VIRT_ADDR(pml4, pdpt, pd, pt) \
-    ((((uint64_t)(pml4) & 0x1FF) << 39) | \
-     (((uint64_t)(pdpt) & 0x1FF) << 30) | \
-     (((uint64_t)(pd)   & 0x1FF) << 21) | \
-     (((uint64_t)(pt)   & 0x1FF) << 12) | \
-     (((pml4) & 0x100) ? 0xFFFF000000000000ULL : 0))
-#define PML4_INDEX(virt_ptr) (((virt_ptr) >> 39) & 0x1FF)
-#define PDPT_INDEX(virt_ptr) (((virt_ptr) >> 30) & 0x1FF)
-#define PD_INDEX(virt_ptr)   (((virt_ptr) >> 21) & 0x1FF)
-#define PT_INDEX(virt_ptr)   (((virt_ptr) >> 12) & 0x1FF)
 
 static void list_add(struct Page** head, struct Page* node) {
     node->free_node.next = *head;
@@ -195,7 +183,7 @@ void free_buddy_pages(struct Page* page, uint8_t order) {
 
 
 bool scan_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, bool searchtoalloc){
-    page_table_entry1 table_entry;
+    page_table_entry table_entry;
     uint64_t span = 1ull << mmu_layout->levels[level].shift;
     while (curr_addr <= max_addr) {
         mmu_get_elem_info(table_ptr, curr_addr, level, &table_entry);
@@ -233,7 +221,7 @@ bool scan_pages(uint64_t vaddr, uint64_t count, bool searchtoalloc){
 
 
 int64_t free_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr){
-    page_table_entry1 table_entry;
+    page_table_entry table_entry;
     uintptr_t span = 1ull << mmu_layout->levels[level].shift;
     while (curr_addr <= max_addr) {
         mmu_get_elem_info(table_ptr, curr_addr, level, &table_entry);
@@ -318,7 +306,7 @@ int64_t free_kernel_pages(uintptr_t vaddr, uint64_t count, uint64_t flags){
 
 
 bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, bool user){
-    page_table_entry1 table_entry;
+    page_table_entry table_entry;
     uint64_t span = 1ull << mmu_layout->levels[level].shift;
     while (curr_addr <= max_addr) {
         mmu_get_elem_info(table_ptr, curr_addr, level, &table_entry);
@@ -413,7 +401,7 @@ void* alloc_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags){
 
 
 bool map_ki_hardware(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, uintptr_t *curr_pfn, bool user, bool readonly){
-    page_table_entry1 table_entry;
+    page_table_entry table_entry;
     int64_t span = 1ull << mmu_layout->levels[level].shift;
     while (curr_addr <= max_addr) {
         mmu_get_elem_info(table_ptr, curr_addr, level, &table_entry);

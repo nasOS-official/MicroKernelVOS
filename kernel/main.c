@@ -12,7 +12,6 @@
 #include <limine_requests.h>
 #include <syscall.h>
 #include <panic.h>
-#include <abstractions.h>
 #include "bootstrap/elfloader/elf.h"
 
 // Set the base revision to 6, this is recommended as this is the latest
@@ -210,7 +209,7 @@ void kmain(void) {
         }
         log(buf, framebuffer);
     }
-    syscall_init();
+    cpu_init(0);
     alloc_init(memmmap_request.response);
 
 
@@ -256,7 +255,7 @@ void kmain(void) {
         : "memory"
     );
 
-    cpu_init();
+    // ki_cpu_init();
 
     hcf();
 }

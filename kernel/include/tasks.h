@@ -4,7 +4,6 @@
 
 #include "paging.h"
 #include <stdint.h>
-#include <cpu.h>
 
 //rights
 #define PROC_DRIVER_RIGHT 0b01
@@ -46,7 +45,7 @@ typedef struct task_control_block_t {
     uint64_t kernel_SP;
     uint64_t user_SP;
     uint64_t user_IP;
-    cpu_core_t* core;
+    struct cpu_core_t* core;
     int64_t affinity;
     thread_state_t state;
     uint64_t wait_for_tick; // 0 to disable wait

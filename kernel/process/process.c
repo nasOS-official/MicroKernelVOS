@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "abstractions.h"
+#include "cpu.h"
 #include "limine_requests.h"
 #include "paging.h"
 #include "stdbool.h"
@@ -8,7 +8,6 @@
 #include <stdint.h>
 #include <tasks.h>
 #include <cpu.h>
-#include "../syscall/x86_64/msr.h"
 #include "../debug/fb.h"
 
 #define MAX_PRIORITY 32

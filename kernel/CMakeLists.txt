@@ -15,16 +15,10 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/linker.ld
 
 
 add_executable(kernel.bin
-    stdlib/stdlib.c
-    stdlib/math.c
-    stdlib/string.c
-    stdlib/snprintf.c
-    stdlib/ctype.c
     debug/fb.c
     limine_requests/limine_requests.c
     paging/paging.c
-    syscall/x86_64/syscall.c
-    syscall/x86_64/syscall.S
+    syscall/syscall.c
     panic/panic.c
     bootstrap/elfloader/elfloader.c
     process/process.c
@@ -36,4 +30,4 @@ add_executable(kernel.bin
 
 set_target_properties(kernel.bin PROPERTIES LINK_FLAGS "-T linker.ld -nostdlib -lgcc -march=x86-64 -mno-red-zone --target=x86_64-pc-none-elf -fno-pie -no-pie ")
 
-target_link_libraries(kernel.bin PRIVATE hal)
+target_link_libraries(kernel.bin PRIVATE hal kstdlib)

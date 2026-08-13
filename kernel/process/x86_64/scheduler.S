@@ -26,7 +26,7 @@ sched_entry:
     pushq %r15
     sub $8, %rsp
 
-    call sched_handler
+//  call sched_handler
 
     addq $8, %rsp
 
