@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "limine_requests.h"
 #include "stdbool.h"
-#include "../debug/fb.h"
+#include "debug.h"
 #include <panic.h>
 
 void hcf(void) {
@@ -18,8 +17,6 @@ void hcf(void) {
 
 
 void panic(){
-    if (framebuffer_request.response->framebuffer_count > 0){
-        log("KERNEL PANIC", framebuffer_request.response->framebuffers[0]);
-    }
+    logk("KERNEL PANIC");
     hcf();
 }

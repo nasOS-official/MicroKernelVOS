@@ -3,6 +3,7 @@
 #define __ALLOC_H
 
 #include "stdbool.h"
+#include "tasks.h"
 #include <stdint.h>
 #include <limine.h>
 
@@ -17,6 +18,8 @@
 // #define SAFE_FLAG 0
 #define UNSAFE_FLAG 0b01
 #define READONLY_FLAG 0b10
+#define NX_FLAG 0b100
+
 
 
 // PAGE_STRUCT FLAGS
@@ -60,14 +63,14 @@ void alloc_init(struct limine_memmap_response* memmap);
 struct Page* alloc_pages(uint8_t order);
 void* alloc_kernel_pages(uint64_t count, uint64_t flags);
 // void* alloc_ki_pages(uint64_t user_vaddr, uint64_t count, bool user, uint64_t flags);
-bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, bool user);
-void* alloc_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
+void* alloc_user_pages(uintptr_t top_table, uint64_t user_vaddr, uint64_t count, uint64_t flags);
 
-int64_t free_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
-int64_t free_kernel_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags);
+int64_t free_user_pages(uintptr_t top_table, uintptr_t vaddr, uint64_t count, uint64_t flags);
+int64_t free_kernel_pages(uintptr_t vaddr, uint64_t count, uint64_t flags);
 
-uint64_t map_hardware_user(uint64_t user_vaddr,	uint64_t count, uint64_t pfn, uint64_t mem_type, uint64_t flags);
+uintptr_t map_hardware_user(uintptr_t top_table, process_t* process, uintptr_t user_vaddr, uint64_t count, uintptr_t phys_page, uint64_t mem_type, uint64_t flags);
 
+uintptr_t mmu_create_top_table();
 
 uint64_t alloc_kernel_stack();
 

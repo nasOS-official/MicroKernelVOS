@@ -2,6 +2,7 @@
 #ifndef __ELF_H
 #define __ELF_H
 
+#include "tasks.h"
 #include <stdint.h>
 
 #define PT_LOAD 0x00000001
@@ -61,6 +62,6 @@ typedef struct {
     uint64_t sh_entsize;
 } s_header;
 
-void* loadelf(const uint8_t* addr, uint64_t lenght);
+void* loadelf(process_t* process, const uint8_t* addr, uint64_t lenght);
 
 #endif

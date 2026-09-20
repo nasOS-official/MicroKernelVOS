@@ -2,7 +2,7 @@
 #ifndef __LIMINE_REQUESTS_H
 #define __LIMINE_REQUESTS_H
 #include <stdint.h>
-#include <limine.h>
+#include "limine.h"
 
 extern volatile uint64_t limine_base_revision[];
 

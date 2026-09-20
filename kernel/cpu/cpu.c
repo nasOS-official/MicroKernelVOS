@@ -14,5 +14,5 @@ void ki_cpu_init(){
     cpu_cores_list->current_thread = NULL;
     cpu_cores_list->next = NULL;
     core_count = 1;
-
+    cpu_init(0);
 }

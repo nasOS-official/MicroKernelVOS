@@ -5,7 +5,6 @@
 
 syscall_entry:
     swapgs
-
     movq %rsp, %gs:16
     movq %gs:8, %rsp
 
@@ -29,6 +28,20 @@ syscall_entry:
     movq %rsp, %rdi
 
     call x86_syscall_handler
+
+    pushq %rax
+
+wait_tx:
+    movw $0x3FD, %dx
+    inb %dx, %al
+    testb $0x20, %al
+    jz wait_tx
+
+    movw $0x3F8, %dx
+    movb $'2', %al
+    outb %al, %dx
+    popq %rax
+
 
     addq $8, %rsp
 

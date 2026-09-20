@@ -50,9 +50,9 @@ uint64_t mmu_set_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level,
 
 uintptr_t mmu_get_top_table();
 
-void mmu_update_addr(uintptr_t addr);
+void mmu_set_top_table(uintptr_t addr);
 
-void mmu_update();
+void mmu_update_addr(uintptr_t addr);
 
 void mmu_update_full();
 

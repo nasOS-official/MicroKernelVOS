@@ -59,6 +59,7 @@ uint64_t mmu_get_elem_info(uintptr_t table_ptr, uintptr_t v_addr, uint8_t level,
     page_table_entry->address = table[num].address;
     page_table_entry->present = table[num].present; 
     page_table_entry->writable = table[num].writable; 
+    page_table_entry->accessed = table[num].accessed;
     page_table_entry->user = table[num].user; 
     page_table_entry->dirty = table[num].dirty; 
     page_table_entry->global = table[num].global; 

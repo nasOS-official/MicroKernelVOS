@@ -213,9 +213,9 @@ bool scan_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uint
     return true;
 }
 
-bool scan_pages(uint64_t vaddr, uint64_t count, bool searchtoalloc){
+bool scan_pages(uintptr_t top_table, uint64_t vaddr, uint64_t count, bool searchtoalloc){
     uint64_t max_addr = vaddr + ((count - 1) * 0x1000);
-    return scan_ki_pages(hhdm_request.response->offset + mmu_get_top_table(), mmu_layout->levels_count - 1, vaddr, max_addr, searchtoalloc);
+    return scan_ki_pages(hhdm_request.response->offset + top_table, mmu_layout->levels_count - 1, vaddr, max_addr, searchtoalloc);
 }
 
 
@@ -265,20 +265,20 @@ int64_t free_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, u
 
 //where is vaddr requires ptr pfn << mmu_layout->levels[0].shift
 
-int64_t free_user_pages(uintptr_t vaddr, uint64_t count, uint64_t flags){
+int64_t free_user_pages(uintptr_t top_table, uintptr_t vaddr, uint64_t count, uint64_t flags){
     if (count == 0 || allocated_pages < count || (vaddr + (count * mmu_layout->levels[0].page_size) >= 0x0000800000000000)){
         return -1;
     }
 
     if (!(flags & UNSAFE_FLAG)){
-        if (!scan_pages(vaddr, count, false)){
+        if (!scan_pages(top_table, vaddr, count, false)){
             return -1;
         }
     }
     
     uintptr_t max_addr = vaddr + ((count - 1) * 0x1000);
 
-    return free_ki_pages(hhdm_request.response->offset + mmu_get_top_table(), 
+    return free_ki_pages(hhdm_request.response->offset + top_table, 
                    mmu_layout->levels_count - 1,
                    vaddr,
                    max_addr);
@@ -291,7 +291,7 @@ int64_t free_kernel_pages(uintptr_t vaddr, uint64_t count, uint64_t flags){
         return -1;
     }
 
-    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(vaddr, count, false))){
+    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(mmu_get_top_table(), vaddr, count, false))){
         return -1;
     }
     // return free_ki_pages(user_vaddr, count, 0, flags);
@@ -305,7 +305,7 @@ int64_t free_kernel_pages(uintptr_t vaddr, uint64_t count, uint64_t flags){
 
 
 
-bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, bool user){
+bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, bool user, bool nx){
     page_table_entry table_entry;
     uint64_t span = 1ull << mmu_layout->levels[level].shift;
     while (curr_addr <= max_addr) {
@@ -321,6 +321,7 @@ bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uin
                 table_entry.user = user;
                 table_entry.writable = 1;
                 table_entry.present = 1;
+                table_entry.no_execute = nx;
                 mmu_set_elem_info(table_ptr, curr_addr, level, &table_entry);
                 mmu_update_addr(curr_addr);
                 curr_addr += span;
@@ -348,7 +349,7 @@ bool alloc_ki_pages(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uin
 
         
         uint64_t smax_addr = MIN(max_addr, curr_addr | (span - 1));
-        if (!alloc_ki_pages((table_entry.address << mmu_layout->levels[0].shift) + hhdm_request.response->offset, level - 1, curr_addr, smax_addr, user)){
+        if (!alloc_ki_pages((table_entry.address << mmu_layout->levels[0].shift) + hhdm_request.response->offset, level - 1, curr_addr, smax_addr, user, nx)){
             return false;
         }
 
@@ -365,13 +366,13 @@ void* alloc_kernel_pages(uint64_t count, uint64_t flags){
     //     return NULL;
     // }
 
-    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(heap_current, count, true))){
+    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(mmu_get_top_table(), heap_current, count, true))){
         return NULL;
     }
 
     uintptr_t max_addr = heap_current + ((count - 1) * mmu_layout->levels[0].page_size);
     void* ptr = (void*)heap_current;
-    if (!alloc_ki_pages(hhdm_request.response->offset + mmu_get_top_table(), mmu_layout->levels_count - 1, heap_current, max_addr, false)){
+    if (!alloc_ki_pages(hhdm_request.response->offset + mmu_get_top_table(), mmu_layout->levels_count - 1, heap_current, max_addr, false, flags & NX_FLAG)){
         return NULL;
     }
 
@@ -379,17 +380,17 @@ void* alloc_kernel_pages(uint64_t count, uint64_t flags){
     return ptr;
 }
 
-void* alloc_user_pages(uint64_t user_vaddr, uint64_t count, uint64_t flags){
+void* alloc_user_pages(uintptr_t top_table, uint64_t user_vaddr, uint64_t count, uint64_t flags){
     if (count == 0 || allocated_pages + count > total_pages || user_vaddr + ((count - 1) * 0x1000) >= 0x0000800000000000) {
         return NULL;
     }
 
-    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(user_vaddr, count, true))){
+    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(top_table, user_vaddr, count, true))){
         return NULL;
     }
 
     uintptr_t max_addr = user_vaddr + ((count - 1) * mmu_layout->levels[0].page_size);
-    if (!alloc_ki_pages(hhdm_request.response->offset + mmu_get_top_table(), mmu_layout->levels_count - 1, user_vaddr, max_addr, true)){
+    if (!alloc_ki_pages(hhdm_request.response->offset + top_table, mmu_layout->levels_count - 1, user_vaddr, max_addr, true, flags & NX_FLAG)){
         return NULL;
     }
 
@@ -450,34 +451,30 @@ bool map_ki_hardware(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, ui
     return true;
 }
 
-uintptr_t map_hardware_user(uintptr_t user_vaddr, uint64_t count, uintptr_t phys_page, uint64_t mem_type, uint64_t flags){
+uintptr_t map_hardware_user(uintptr_t top_table, process_t* process, uintptr_t user_vaddr, uint64_t count, uintptr_t phys_page, uint64_t mem_type, uint64_t flags){
     // return (uint64_t)map_ki_hardware(user_vaddr, count, phys_page, mem_type, flags, 1);
     uintptr_t max_addr = user_vaddr + ((count - 1) * mmu_layout->levels[0].page_size);
 
-    task_control_block_t* tcb = get_thread_info_ptr();
-    if (!(tcb->process->rights & PROC_DRIVER_RIGHT)){
+    if (!(process->rights & PROC_DRIVER_RIGHT)){
         return 0;
     }
 
     switch (mem_type) {
+        case LIMINE_MEMMAP_RESERVED_MAPPED:
         case LIMINE_MEMMAP_RESERVED:
-            if (!(tcb->process->rights & PROC_MEM_RESERVED_RIGHT))
+            if (!(process->rights & PROC_MEM_RESERVED_RIGHT))
                 return 0;
             break;
         case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
-            if (!(tcb->process->rights & PROC_MEM_ACPI_TABLE_RIGHT))
+            if (!(process->rights & PROC_MEM_ACPI_TABLE_RIGHT))
                 return 0;
             break;
         case LIMINE_MEMMAP_ACPI_NVS:
-            if (!(tcb->process->rights & PROC_MEM_ACPI_NVS_RIGHT))
+            if (!(process->rights & PROC_MEM_ACPI_NVS_RIGHT))
                 return 0;
             break;
         case LIMINE_MEMMAP_FRAMEBUFFER:
-            if (!(tcb->process->rights & PROC_MEM_FRAMEBUFFER_RIGHT))
-                return 0;
-            break;
-        case LIMINE_MEMMAP_RESERVED_MAPPED:
-            if (!(tcb->process->rights & PROC_MEM_RESERVER_MAPPED_RIGHT))
+            if (!(process->rights & PROC_MEM_FRAMEBUFFER_RIGHT))
                 return 0;
             break;
         default:
@@ -497,7 +494,7 @@ uintptr_t map_hardware_user(uintptr_t user_vaddr, uint64_t count, uintptr_t phys
     }
 
 
-    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(user_vaddr, count, true))){
+    if ((!(flags & UNSAFE_FLAG)) && (!scan_pages(top_table, user_vaddr, count, true))){
         return 0;
     }
 
@@ -517,9 +514,30 @@ uintptr_t map_hardware_user(uintptr_t user_vaddr, uint64_t count, uintptr_t phys
 
 
 
-    map_ki_hardware(hhdm_request.response->offset + mmu_get_top_table(), mmu_layout->levels_count - 1, user_vaddr, max_addr, &phys_page, true, readonly);
+    map_ki_hardware(hhdm_request.response->offset + top_table, mmu_layout->levels_count - 1, user_vaddr, max_addr, &phys_page, true, readonly);
     return user_vaddr;
 }
+
+uintptr_t mmu_create_top_table(){
+    struct Page* phys_page = alloc_pages(0);
+    if (!phys_page) panic();
+
+    uintptr_t x1 = mmu_layout->levels[mmu_layout->levels_count - 1].entries_count / 2;
+    uintptr_t x2 = mmu_layout->levels[mmu_layout->levels_count - 1].entries_count;
+
+    uintptr_t paddr = hhdm_request.response->offset + ((phys_page - pages_map) * 0x1000);
+
+    for (uintptr_t x = 0; x < x1; x++){
+        ((uintptr_t*)paddr)[x] = 0;
+    }
+
+    for (uintptr_t x = x1; x < x2; x++){
+        ((uintptr_t*)paddr)[x] = ((uintptr_t*)(hhdm_request.response->offset + mmu_get_top_table()))[x];
+    }
+
+    return ((phys_page - pages_map) * 0x1000);
+}
+
 
 uint64_t alloc_kernel_stack(){
     struct Page* phys_page = alloc_pages(2);

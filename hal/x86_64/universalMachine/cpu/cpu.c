@@ -1,6 +1,10 @@
 #include "cpu.h"
 #include <stdint.h>
+#include "../../kernel/include/limine_requests.h"
+#include "debug.h"
+#include "mmu.h"
 #include "msr.h"
+#include "stdbool.h"
 
 uint32_t cpu_get_count(){
     return 1;
@@ -8,9 +12,160 @@ uint32_t cpu_get_count(){
 
 void syscall_init();
 
+uintptr_t lapic_base = 0;
+uint64_t tsc_ticks_per_ms;
+uint64_t tsc_freq;
+
+#define LAPIC_TIMER_REG   (lapic_base + 0x320)
+#define LAPIC_INIT_TIMER  (lapic_base + 0x380)
+#define LAPIC_CUR_TIMER   (lapic_base + 0x390)
+#define LAPIC_DIV_TIMER   (lapic_base + 0x3E0)
+
+bool tsc = false;
+
+
+uint64_t calibrate_tsc(void) {
+    uint16_t pit_ticks = 11931; 
+
+    uint8_t tmp = inb(0x61);
+    outb(0x61, (tmp & ~0x02) | 0x01);
+
+    outb(0x43, 0xB0); 
+    outb(0x42, (uint8_t)(pit_ticks & 0xFF));
+    outb(0x42, (uint8_t)(pit_ticks >> 8));
+
+    uint64_t tsc_start = read_tsc();
+
+    tmp = inb(0x61);
+    outb(0x61, tmp | 0x01);
+
+    uint16_t val;
+    do {
+        outb(0x43, 0x80);
+        uint8_t lo = inb(0x42);
+        uint8_t hi = inb(0x42);
+        val = (hi << 8) | lo;
+    } while (val > 0);
+
+    uint64_t tsc_end = read_tsc();
+
+    uint64_t tsc_delta = tsc_end - tsc_start;
+
+    uint64_t tsc_freq = tsc_delta * 100;
+
+    return tsc_freq;
+}
+
+uint64_t calibrate_lapic(void) {
+
+    uint16_t pit_ticks = 11931; 
+
+    uint8_t tmp = inb(0x61);
+    outb(0x61, (tmp & ~0x02) | 0x01);
+
+    outb(0x43, 0xB0);
+    outb(0x42, (uint8_t)(pit_ticks & 0xFF));
+    outb(0x42, (uint8_t)(pit_ticks >> 8));
+
+    *(volatile uint32_t*)LAPIC_INIT_TIMER = 0xFFFFFFFF;
+    *(volatile uint32_t*)LAPIC_DIV_TIMER = 1;
+
+    tmp = inb(0x61);
+    outb(0x61, tmp | 0x01);
+
+    uint16_t val;
+    do {
+        outb(0x43, 0x80);
+        uint8_t lo = inb(0x42);
+        uint8_t hi = inb(0x42);
+        val = (hi << 8) | lo;
+    } while (val > 0);
+    
+    uint64_t tsc_delta = 0xFFFFFFFF - *(volatile uint32_t*)LAPIC_CUR_TIMER;
+    *(volatile uint32_t*)LAPIC_INIT_TIMER = 0;
+
+    uint64_t tsc_freq = tsc_delta * 100;
+
+    return tsc_freq;
+}
+
+extern bool map_ki_hardware(uintptr_t table_ptr, uint8_t level, uintptr_t curr_addr, uintptr_t max_addr, uintptr_t *curr_pfn, bool user, bool readonly);
+
+
 void cpu_init(uint32_t core){
     (void) core;
     syscall_init();
+
+    uint32_t features;
+    asm volatile (
+        "cpuid"
+        : "=d"(features)
+        : "a"(0x80000007)
+        : "memory"
+    );
+    uint64_t phys_page = 0xFEE00;
+    map_ki_hardware(hhdm_request.response->offset + mmu_get_top_table(), mmu_get_layout()->levels_count - 1, 0xFFFFC00000000000, 0xFFFFC00000000000, &phys_page, false, false);
+
+    lapic_base = 0xFFFFC00000000000;
+    *(volatile uint32_t*)LAPIC_TIMER_REG = 0xEF | (1 << 16);
+    if (features & (1UL << 8)){
+        log_string("[HAL] Using TSC for scheduler");
+        uint32_t d, n, f;
+        asm volatile (
+            "cpuid"
+            : "=a"(d), "=b"(n), "=c"(f)
+            : "a"(0x15)
+            : "memory"
+        );
+
+        if (f == 0){
+            tsc_freq = calibrate_tsc();
+            log_string("TSC CALIBRATION FINISHED\n\r");
+        } else {
+            tsc_freq = f * (n / d);
+            log_string("TSC CALIBRATION NOT NEEDED\n\r");
+        }
+        tsc_ticks_per_ms = tsc_freq / 100;
+
+     
+        uint32_t lvt_value = 0xEF | (2 << 17);
+        *(volatile uint32_t*)LAPIC_TIMER_REG = lvt_value;
+
+        uint64_t target_tsc = read_tsc() + tsc_ticks_per_ms;
+        wrmsr(IA32_TSC_DEADLINE, target_tsc);
+        tsc = true;
+    } else {
+        log_string("[HAL] Using LAPIC timer for scheduler\n\r");
+
+        uint32_t d, n, f;
+        asm volatile (
+            "cpuid"
+            : "=a"(d), "=b"(n), "=c"(f)
+            : "a"(0x15)
+            : "memory"
+        );
+
+        if (f == 0){
+            log_string("[HAL] LAPIC CALIBRATION STARTED\n\r");
+            tsc_freq = calibrate_lapic();
+            log_string("LAPIC CALIBRATION FINISHED\n\r");
+        } else {
+            tsc_freq = f * (n / d);
+            log_string("LAPIC CALIBRATION NOT NEEDED\n\r");
+        }
+
+        *(volatile uint32_t*)LAPIC_DIV_TIMER = 1;
+
+        uint32_t lvt_value = 0xEF;
+        *(volatile uint32_t*)LAPIC_TIMER_REG = lvt_value;
+
+        tsc_ticks_per_ms = tsc_freq / 100;
+        *(volatile uint32_t*)LAPIC_INIT_TIMER = tsc_ticks_per_ms;
+
+
+        
+    }
+    // irq 0xEF
 }
 
 struct idt_entry {
@@ -93,8 +248,6 @@ struct syscall_frame_x86 {
     uint64_t rax;
 };
 
-extern int64_t syscall_handler(struct syscall_frame* regs);
-
 int64_t x86_syscall_handler(struct syscall_frame_x86* regs){
     syscall_frame frame;
     frame.syscall_num = regs->rax;
@@ -171,7 +324,7 @@ void init_gdt(void) {
 }
 
 void set_kernel_stack(void* kernel_SP){
-    tss.rsp0 = (uint64_t)&kernel_SP;
+    tss.rsp0 = (uint64_t)kernel_SP;
 }
 
 void init_tss() {
@@ -207,6 +360,22 @@ void init_tss() {
         : "memory"
     );
 
+    // asm volatile (
+    //     "lgdt %0\n\t"
+    //     "push $0x08\n\t"
+    //     "lea 1f(%%rip), %%rax\n\t"
+    //     "push %%rax\n\t"
+    //     "lretq\n\t"
+    //     "1:\n\t"
+        
+    //     "mov $0x10, %%ax\n\t"
+    //     "mov %%ax, %%ds\n\t"
+    //     "mov %%ax, %%es\n\t"
+    //     "mov %%ax, %%ss\n\t"
+    //     :
+    //     : "m"(gdt_p)
+    //     : "rax", "memory"
+    // );
 
     uint16_t tss_selector = 0x28;
     asm volatile ("ltr %0" : : "r"(tss_selector));
@@ -216,6 +385,7 @@ void syscall_init(){
     init_idt();
     init_tss();
     init_gdt();
+
     uint64_t efer = rdmsr(IA32_EFER);
     efer |= EFER_SCE;
     wrmsr(IA32_EFER, efer);
@@ -240,4 +410,22 @@ void set_thread_info_ptr(struct task_control_block_t* ptr){
 
 struct task_control_block_t* get_thread_info_ptr(){
     return (struct task_control_block_t*)rdmsr(IA32_GS_BASE);
+}
+
+
+extern void sched_handler();
+
+void x86_sched_handler(){
+    sched_handler();
+
+
+    if (tsc){
+        uint64_t next_deadline = read_tsc() + tsc_ticks_per_ms;
+        wrmsr(IA32_TSC_DEADLINE, next_deadline);
+    } else {
+        *(volatile uint32_t*)LAPIC_INIT_TIMER = tsc_ticks_per_ms;
+    }
+
+
+    *(volatile uint32_t*)(lapic_base + 0xB0) = 0;
 }
