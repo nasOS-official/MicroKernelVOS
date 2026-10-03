@@ -107,21 +107,6 @@ void test_allocator() {
         logk("[ERROR] Critical failure: Data in heap is corrupted or cross-talking!");
     }
 
-    // Step 6: Validate page traversal mapping engine via page_tree_get
-    // uint64_t pml4_physical;
-    // asm volatile("mov %%cr3, %0" : "=r"(pml4_physical));
-    // // page_tree tree = page_tree_get(pml4_physical, (uint64_t)ptr1);
-    // log("Inspecting the page table tree for ptr1:", framebuffer);
-
-    // snprintf(buf, sizeof(buf), "  Deepest resolved level (Expected 1): %d", tree.min_level_exists);
-    // log(buf, framebuffer);
-
-    // snprintf(buf, sizeof(buf), "  PT entry Present bit (Expected 1): %d", tree.pt.present);
-    // log(buf, framebuffer);
-
-    // snprintf(buf, sizeof(buf), "  Physical PFN mapped: 0x%llx", (unsigned long long)tree.pt.address);
-    // log(buf, framebuffer);
-
     if (free_user_pages(mmu_get_top_table(), (uint64_t)ptr4, 1, 0) != 0) {
         logk("[CRITICAL] Failed to free user page 4 (ptr4)!");
         return;
@@ -129,20 +114,6 @@ void test_allocator() {
 
     logk("--- MEMORY ALLOCATOR TEST COMPLETE ---");
 }
-
-
-// struct IretFrame
-// {
-//     uint64_t rip;
-//     uint64_t cs;
-//     uint64_t rflags;
-//     uint64_t rsp;
-//     uint64_t ss;
-// } __attribute__((packed));
-
-
-// #define USER_CS 0x1B
-// #define USER_SS 0x23
 
 
 void kmain(void) {
@@ -228,30 +199,6 @@ void kmain(void) {
     thread_create(proc, (uint8_t*)rip, (uint8_t*)(addr + 0x2000), 0);
 
     process_ki_setrights(proc, PROC_DRIVER_RIGHT | PROC_MEM_FRAMEBUFFER_RIGHT);
-
-    // task_control_block_t* task = kernel_malloc(sizeof(task_control_block_t));
-    // process_t* proc = kernel_malloc(sizeof(process_t));
-    // struct IretFrame frame = {
-    //     .rip = rip,
-    //     .cs = USER_CS,
-    //     .rflags = 0x202,
-    //     .rsp = addr + 0x2000,
-    //     .ss = USER_SS,
-    // };
-    // (void)frame;
-    // task->kernel_SP = alloc_kernel_stack();
-    // task->user_IP = rip;
-    // set_kernel_stack((void*)task->kernel_SP);
-    // asm volatile(
-    //     "mov %0, %%rsp\n\t"
-    //     "iretq\n\t"
-    //     :
-    //     : "r"(&frame)
-    //     : "memory"
-    // );
-    // logk("userspace_enter");
-    // set_thread_info_ptr(task);
-    // userspace_jmp(addr + 0x2000, task);
     start_sched();
     logk("exit");
     hcf();

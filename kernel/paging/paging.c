@@ -543,7 +543,7 @@ uint64_t alloc_kernel_stack(){
     struct Page* phys_page = alloc_pages(2);
     if (!phys_page) panic();
 
-    uint64_t paddr = hhdm_request.response->offset + ((phys_page - pages_map) * 0x1000);
+    uint64_t paddr = hhdm_request.response->offset + ((phys_page - pages_map) * 0x1000) + 0x1000 * 4;
     return paddr;
 }
 

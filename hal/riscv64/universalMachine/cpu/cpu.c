@@ -52,11 +52,11 @@ struct hw_context_data_t* rv64_ctrap_handler(struct hw_context_data_t* context){
                 break;
         }
     } else {
-        logh("exception");
         switch (scause & 0x7FFFFFFFFFFFFFFF) {
             case 8:
                 {   
-                    logh("syscall");
+                    volatile uint8_t padding[32];
+                    (void)padding;
                     syscall_frame frame = {
                         .syscall_num = context->a7,
                         .arg1 = context->a0,
@@ -69,20 +69,7 @@ struct hw_context_data_t* rv64_ctrap_handler(struct hw_context_data_t* context){
 
                     context->a0 = syscall_handler(&frame);
                     context->sepc += 4;
-                    logh("SYSCALL_RET");
-                    char text[30];
 
-                    snprintf(text, sizeof(text), "%llx", scause);
-                    logh("SCAUSE");
-                    logh(text);
-
-                    snprintf(text, sizeof(text), "%llx", stval);
-                    logh("STVAL");
-                    logh(text);
-
-                    snprintf(text, sizeof(text), "%llx", context->sepc);
-                    logh("SEPC");
-                    logh(text);
                     break;
                 }
             default:

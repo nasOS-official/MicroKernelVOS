@@ -3,10 +3,6 @@
 
 #include <stdint.h>
 
-/* =========================================================================
- * Структуры данных SBI
- * ========================================================================= */
-
 struct sbiret {
     long error;
     long value;
@@ -27,8 +23,8 @@ struct sbiret {
 #define SBI_ERR_ALREADY_STOPPED     -8
 
 /* =========================================================================
- * Legacy Extension IDs (EID) — Устаревшие (v0.1)
- * Note: Используют только fid = 0 (передается в a7, аргументы в a0-a3)
+ * Legacy Extension IDs (EID)
+ * Note: fid = 0
  * ========================================================================= */
 
 #define SBI_SET_TIMER               0x00
@@ -84,17 +80,16 @@ struct sbiret {
 #define SBI_EXT_SRST                0x53525354
 #define SBI_EXT_SRST_SYSTEM_RESET           0x0
 
-/* Типы сброса (reset_type) */
+/* Reset_type */
 #define SBI_SRST_RESET_TYPE_SHUTDOWN        0x0
 #define SBI_SRST_RESET_TYPE_COLD_REBOOT     0x1
 #define SBI_SRST_RESET_TYPE_WARM_REBOOT     0x2
 
-/* Причины сброса (reset_reason) */
+/* Reset_reason */
 #define SBI_SRST_RESET_REASON_NONE          0x0
 #define SBI_SRST_RESET_REASON_SYSTEM_FAILURE 0x1
 
 /* --- Debug Console Extension (EID: 0x4442434E "DBCN") --- */
-/* Заменил устаревшие CONSOLE_PUTCHAR / GETCHAR */
 #define SBI_EXT_DBCN                0x4442434E
 #define SBI_EXT_DBCN_CONSOLE_WRITE          0x0
 #define SBI_EXT_DBCN_CONSOLE_READ           0x1
@@ -119,10 +114,6 @@ struct sbiret {
 #define SBI_EXT_CPPC_PROBE                  0x0
 #define SBI_EXT_CPPC_READ                   0x1
 #define SBI_EXT_CPPC_WRITE                  0x2
-
-/* =========================================================================
- * Базовая обертка ECALL для выполнения SBI вызова
- * ========================================================================= */
 
 static inline struct sbiret sbi_ecall(int ext, int fid, unsigned long arg0,
                                      unsigned long arg1, unsigned long arg2,
@@ -150,4 +141,4 @@ static inline struct sbiret sbi_ecall(int ext, int fid, unsigned long arg0,
     return ret;
 }
 
-#endif /* RISCV_SBI_H */
+#endif
