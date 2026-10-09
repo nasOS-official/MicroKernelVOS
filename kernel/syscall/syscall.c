@@ -35,7 +35,7 @@ int64_t syscall_handler(struct syscall_frame* regs){
             return thread_getaffinity(regs->arg1);
         case 993:
             log_string("[APP] ");
-            log_string((char*)regs->arg1); // тут беда на risc-v пока что. проверить что там по глобальным переменным.
+            log_string((char*)regs->arg1);
             log_string("\n\r");
             return 0;
         default:

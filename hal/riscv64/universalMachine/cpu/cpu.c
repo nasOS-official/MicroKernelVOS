@@ -55,8 +55,6 @@ struct hw_context_data_t* rv64_ctrap_handler(struct hw_context_data_t* context){
         switch (scause & 0x7FFFFFFFFFFFFFFF) {
             case 8:
                 {   
-                    volatile uint8_t padding[32];
-                    (void)padding;
                     syscall_frame frame = {
                         .syscall_num = context->a7,
                         .arg1 = context->a0,
