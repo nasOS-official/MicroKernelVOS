@@ -3,16 +3,21 @@
 #include <paging.h>
 #include <cpu.h>
 #include <stdint.h>
+#include "cpui.h"
 
-cpu_core_t* cpu_cores_list = NULL;
 uint32_t core_count = 0;
+
+cpu_core_t* cpu_list[MAX_CPUS];
 
 
 void ki_cpu_init(){
-    cpu_cores_list = kernel_malloc(sizeof(cpu_core_t));
-    cpu_cores_list->cpu_id = 0;
-    cpu_cores_list->current_thread = NULL;
-    cpu_cores_list->next = NULL;
+    cpu_list[0] = kernel_zalloc(sizeof(cpu_core_t));
+    cpu_list[0]->cpu_id = 0;
+    cpu_list[0]->current_thread = NULL;
     core_count = 1;
     cpu_init(0);
+}
+
+cpu_core_t* get_current_cpu(){
+    return cpu_list[get_thread_info_ptr()->cpu_id];
 }

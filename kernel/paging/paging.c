@@ -8,6 +8,7 @@
 #include <snprintf.h>
 #include <math.h>
 #include <panic.h>
+#include <string.h>
 #include <tasks.h>
 #include <stdlib.h>
 #include "cpu.h"
@@ -687,6 +688,12 @@ void* kernel_malloc(uint64_t size){
     
 
     return (uint8_t*)new_alloc_block + sizeof(alloc_t);
+}
+
+void* kernel_zalloc(uint64_t size){
+    void* addr = kernel_malloc(size);
+    memset(addr , 0, size);
+    return addr;
 }
 
 

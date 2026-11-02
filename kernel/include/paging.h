@@ -75,6 +75,7 @@ uintptr_t mmu_create_top_table();
 uint64_t alloc_kernel_stack();
 
 void* kernel_malloc(uint64_t size);
+void* kernel_zalloc(uint64_t size);
 void kernel_free(void* addr);
 
 

@@ -3,7 +3,6 @@
 #define __CPU_H
 #include <stdint.h>
 
-
 #if defined(__x86_64__)
 #include "../x86_64/universalMachine/cpu/x86_64_cpu.h"
 #endif
@@ -22,17 +21,13 @@ typedef struct syscall_frame {
     uint64_t arg6;
 } syscall_frame;
 
+
+
 void cpu_init(uint32_t cpu);
 int64_t syscall_handler(struct syscall_frame* regs);
 
-typedef struct cpu_core_t {
-    uint32_t cpu_id;
-    struct task_control_block_t* current_thread;
-    struct cpu_core_t* next;
-} cpu_core_t;
 
-
-
+struct task_control_block_t;
 
 void set_thread_info_ptr(struct task_control_block_t* ptr);
 struct task_control_block_t* get_thread_info_ptr();

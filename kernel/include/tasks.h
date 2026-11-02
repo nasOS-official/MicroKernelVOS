@@ -2,11 +2,12 @@
 #ifndef __TASKS_H
 #define __TASKS_H
 
-#include "cpu.h"
 #include <stdint.h>
+#include "cpu.h"
 
 #define MAX_PRIORITY 32
 #define MAX_THREADS_PER_PROC 4096
+#define QUANTUM_TICKS 15
 
 //rights
 #define PROC_DRIVER_RIGHT 0b01
@@ -21,8 +22,10 @@ typedef enum {
     THREAD_NOT_EXISTS = 0,
     THREAD_READY,
     THREAD_RUNNING,
-    THREAD_BLOCKED,
-    THREAD_DEAD
+    THREAD_BLOCKED_IPC,
+    THREAD_BLOCKED_MUTEX,
+    THREAD_DEAD,
+    THREAD_IDLE
 } thread_state_t;
 
 
@@ -38,11 +41,6 @@ typedef struct process_t {
     struct hw_data_t hw_data;
 } process_t;
 
-typedef struct task_list_t{
-    struct task_control_block_t* prev; // circular list
-    struct task_control_block_t* next; // circular list
-} task_list_t; 
-
 
 typedef struct task_control_block_t {
     uint32_t tid; // pid << 16 | num
@@ -50,13 +48,21 @@ typedef struct task_control_block_t {
     uint64_t kernel_SP;
     uint64_t user_SP;
     uint64_t user_IP;
-    struct cpu_core_t* core;
     int64_t affinity;
     thread_state_t state;
     uint64_t wait_for_tick; // 0 to disable wait
+    uint8_t base_priority;
+    uint8_t current_priority;
+    uint8_t inherited_priority;
+    uint32_t lastCpu;
+    uint32_t quantum_remaining;
     struct process_t* process;
-    struct task_list_t task_lst;
+    struct task_control_block_t* prev;
+    struct task_control_block_t* next;
 } task_control_block_t;
+
+
+
 
 void start_sched();
 
@@ -72,5 +78,6 @@ uint16_t process_getpid();
 int64_t thread_setaffinity(uint32_t tid, int64_t affinity);
 int64_t thread_getaffinity(uint32_t tid);
 thread_state_t thread_getstate(uint32_t tid);
+task_control_block_t* thread_idle_create(uint32_t cpu_id);
 
 #endif

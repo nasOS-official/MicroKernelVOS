@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "cpu.h"
+#include "cpui.h"
+#include "limine_requests.h"
 #include "mmu.h"
 #include "paging.h"
+#include "panic.h"
 #include "stdbool.h"
 #include "stddef.h"
 #include <stdint.h>
@@ -12,14 +15,9 @@
 #include "debug.h"
 
 
+void insert_ready(cpu_core_t* cpu, task_control_block_t* t);
 
-
-task_control_block_t* priority_list[MAX_PRIORITY];
-uint32_t priority_bitmap;
-
-
-
-uint32_t process_counter = 0;
+uint32_t process_counter = 1;
 
 uint64_t process_bitmap[65536 / sizeof(uint64_t) / 8];
 
@@ -28,7 +26,7 @@ process_t** process_table_l1[256];
 void process_setptr(uint16_t pid, process_t* ptr){
     uint8_t pid_l1 = pid >> 8;
     if (process_table_l1[pid_l1] == NULL && ptr != NULL){
-        process_table_l1[pid_l1] = kernel_malloc(256 * sizeof(uintptr_t));
+        process_table_l1[pid_l1] = kernel_zalloc(256 * sizeof(uintptr_t));
     } else if (process_table_l1[pid_l1] == NULL){
         return;
     }
@@ -64,7 +62,7 @@ void thread_setptr(uint32_t tid, task_control_block_t* ptr){
     uint8_t tid_l2 = tid & 0x3f;
 
     if (proc->threads_table_l1[tid_l1] == NULL && ptr != NULL){
-        proc->threads_table_l1[tid_l1] = kernel_malloc(64 * sizeof(uintptr_t));
+        proc->threads_table_l1[tid_l1] = kernel_zalloc(64 * sizeof(uintptr_t));
     } else if (proc->threads_table_l1[tid_l1] == NULL) {
         return;
     }
@@ -108,8 +106,7 @@ int32_t process_create(){
     if (pid == -1){
         return -1;
     }
-    process_t* addr = kernel_malloc(sizeof(process_t));
-    memset(addr, 0, sizeof(process_t));
+    process_t* addr = kernel_zalloc(sizeof(process_t));
 
     addr->cr3 = mmu_create_top_table();
 
@@ -127,7 +124,7 @@ uint64_t thread_create(uint16_t pid, uint8_t* entry_point, uint8_t* stack_pointe
         return 0;
     }
 
-    task_control_block_t* addr = kernel_malloc(sizeof(task_control_block_t));
+    task_control_block_t* addr = kernel_zalloc(sizeof(task_control_block_t));
     process_t* cur_proc = process_getptr(pid);
 
     uint32_t ltid = 0;
@@ -146,34 +143,59 @@ uint64_t thread_create(uint16_t pid, uint8_t* entry_point, uint8_t* stack_pointe
     addr->kernel_SP = alloc_kernel_stack();
     addr->user_SP = (uint64_t)stack_pointer;
     addr->user_IP = (uint64_t)entry_point;
-    addr->state = THREAD_RUNNING;
+    addr->state = THREAD_READY;
     addr->wait_for_tick = 0;
+    addr->base_priority = priority;
+    addr->current_priority = priority;
+    addr->inherited_priority = 0;
+    addr->quantum_remaining = QUANTUM_TICKS;
+    
     thread_setptr(addr->tid, addr);
 
     prepare_stack(addr);
     
 
+    task_control_block_t* current = get_thread_info_ptr();
+    int target_cpu = (current->affinity == -1) ? current->cpu_id : current->affinity;
 
-    // task_list_t* task_priority_addr = kernel_malloc(sizeof(task_list_t));
-    // task_priority_addr->block = addr;
+    addr->cpu_id = target_cpu;
+
+    insert_ready(cpu_list[target_cpu], addr);
 
 
-    // if (priority_list[priority] != NULL){
-    //     priority_list[priority]->prev = task_priority_addr;
-    // }
-    if (priority_list[priority] == NULL){
-        priority_list[priority] = addr;
-        addr->task_lst.next = addr;
-        addr->task_lst.prev = addr;
-    } else {
-        addr->task_lst.next = priority_list[priority];
-        addr->task_lst.prev = priority_list[priority]->task_lst.prev;
-        addr->task_lst.prev->task_lst.next = addr;
-        addr->task_lst.next->task_lst.prev = addr;
-    }
+
 
     return addr->tid;
 }
+
+task_control_block_t* thread_idle_create(uint32_t cpu_id){
+
+    task_control_block_t* idle = kernel_zalloc(sizeof(task_control_block_t));
+
+
+
+    process_bitmap[0] |= 1;
+    idle->tid = 0; 
+    
+    idle->process = NULL; 
+    
+    idle->cpu_id = cpu_id; 
+    idle->affinity = cpu_id;
+    
+    idle->kernel_SP = alloc_kernel_stack();
+    idle->user_SP = 0;
+    idle->user_IP = 0;
+    idle->state = THREAD_IDLE;
+    idle->base_priority = 0;
+    idle->current_priority = 0;
+    idle->inherited_priority = 0;
+    idle->quantum_remaining = QUANTUM_TICKS;
+
+    cpu_list[cpu_id]->current_thread = idle;
+    return idle;
+    //after this use set_thread_info_ptr on every core to set idle thread as current
+}
+
 
 uint64_t process_getrights(uint16_t pid){
     process_t* ptr = process_getptr(pid);
@@ -250,15 +272,134 @@ thread_state_t thread_getstate(uint32_t tid){
     return current_thread->state;
 }
 
-void start_sched(){
-    task_control_block_t* task = NULL;
-    for (int x = 0; x < MAX_PRIORITY; x++){
-        if (priority_list[x] != NULL){
-            priority_list[x] = priority_list[x]->task_lst.next;
-            task = priority_list[x];
-            break;
+
+task_control_block_t* pick_next_thread(cpu_core_t* cpu) {
+    if (cpu->ready_summary == 0) {
+        return NULL;
+    }
+    
+
+    int highestPrio = 31 - __builtin_clz(cpu->ready_summary);
+    
+    task_control_block_t* t = cpu->ready_head[highestPrio];
+    
+    cpu->ready_head[highestPrio] = t->next;
+    if (cpu->ready_head[highestPrio] == NULL) {
+        cpu->ready_tail[highestPrio] = NULL;
+        cpu->ready_summary &= ~(1 << highestPrio);
+    }
+    
+    cpu->ready_count--;
+    return t;
+}
+
+void insert_ready(cpu_core_t* cpu, task_control_block_t* t) {
+    int prio = t->current_priority;
+    cpu->ready_summary |= (1 << prio);
+    t->next = NULL;
+    if (cpu->ready_tail[prio] == NULL) {
+        cpu->ready_head[prio] = t;
+        cpu->ready_tail[prio] = t;
+    } else {
+        cpu->ready_tail[prio]->next = t;
+        cpu->ready_tail[prio] = t;
+    }
+    t->state = THREAD_READY;
+    cpu->ready_count++;
+}
+
+task_control_block_t* try_steal_work(cpu_core_t* cpu) {
+    uint32_t my_id = cpu->cpu_id;
+    
+    for (uint32_t i = 0; i < MAX_CPUS; i++) {
+        if (cpu_list[i] == NULL) continue;
+        if (i == my_id) continue;
+        
+        cpu_core_t* victim = cpu_list[i];
+        
+        if (victim->ready_count <= 1) continue;
+        if (victim->ready_summary == 0) continue;
+
+        int prio = 31 - __builtin_clz(victim->ready_summary);
+
+        task_control_block_t* stolen = victim->ready_head[prio];
+        task_control_block_t* prev = NULL;
+
+        while (stolen != NULL) {
+            if (stolen->affinity == -1) {
+                
+                if (prev == NULL) {
+                    victim->ready_head[prio] = stolen->next;
+                } else {
+                    prev->next = stolen->next;
+                }
+                
+                if (victim->ready_head[prio] == NULL) {
+                    victim->ready_tail[prio] = NULL;
+                    victim->ready_summary &= ~(1 << prio);
+                }
+                
+                victim->ready_count--;
+
+                return stolen;
+            }
+            
+
+            prev = stolen;
+            stolen = stolen->next;
         }
     }
+    
+    return NULL;
+}
+
+task_control_block_t* schedule() {
+    task_control_block_t* current = get_thread_info_ptr();
+    int cpu_id = current->cpu_id;
+
+    if (current->state == THREAD_RUNNING && current->process != NULL) {
+        current->state = THREAD_READY;
+        insert_ready(cpu_list[cpu_id], current);
+    }
+    
+    task_control_block_t* next = pick_next_thread(cpu_list[cpu_id]);
+    
+    while (next == NULL || next->state == THREAD_IDLE) {
+        task_control_block_t* stolen = try_steal_work(cpu_list[cpu_id]);
+
+        if (stolen != NULL) {
+            next = stolen;
+            break;
+        }
+    
+        next = pick_next_thread(cpu_list[cpu_id]);
+    }
+    
+    if (next != current) {
+        next->cpu_id = cpu_id;
+        cpu_list[cpu_id]->current_thread = next;
+    }
+    next->state = THREAD_RUNNING;
+    
+    return next;
+}
+
+void start_sched(){
+    task_control_block_t* current = get_thread_info_ptr();
+    
+    current->quantum_remaining--;
+    
+    if (current->quantum_remaining <= 0) {
+        if (current->current_priority > current->base_priority &&
+            current->inherited_priority == 0) {
+            current->current_priority--;
+        }
+        current->quantum_remaining = QUANTUM_TICKS;
+    }
+
+    
+    task_control_block_t* task = schedule();
+    
     set_thread_info_ptr(task);
     logk("SET TABLE");
     mmu_set_top_table(task->process->cr3);
@@ -267,19 +408,32 @@ void start_sched(){
     userspace_jmp(task);
 }
 
-task_control_block_t* sched_handler(){
-    logk("HELLO SCHED!");
-    task_control_block_t* task = NULL;
 
-    for (int x = 0; x < MAX_PRIORITY; x++){
-        if (priority_list[x] != NULL){
-            priority_list[x] = priority_list[x]->task_lst.next;
-            task = priority_list[x];
-            break;
+
+
+
+task_control_block_t* sched_handler(){
+    task_control_block_t* current = get_thread_info_ptr();
+    
+    current->quantum_remaining--;
+    
+    if (current->quantum_remaining <= 0) {
+        if (current->current_priority > current->base_priority &&
+            current->inherited_priority == 0) {
+            current->current_priority--;
         }
+        current->quantum_remaining = QUANTUM_TICKS;
     }
-    set_thread_info_ptr(task);
-    mmu_set_top_table(task->process->cr3);
+    
+    task_control_block_t* next = schedule();
+
+
+    logk("HELLO SCHED!");
+
+    set_thread_info_ptr(next);
+    if (current->process != next->process) {
+        mmu_set_top_table(next->process->cr3);
+    }
     start_timer(10000);
-    return task;
+    return next;
 }

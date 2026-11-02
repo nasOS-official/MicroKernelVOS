@@ -178,9 +178,9 @@ void kmain(void) {
     }
 
 
-   
 
 
+    set_thread_info_ptr(thread_idle_create(0));
 
     int32_t proc = process_create();
     if (proc == -1){
