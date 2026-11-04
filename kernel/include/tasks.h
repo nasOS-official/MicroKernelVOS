@@ -65,6 +65,7 @@ typedef struct task_control_block_t {
 
 
 void start_sched();
+task_control_block_t* sched_handler();
 
 process_t* process_getptr(uint16_t pid);
 

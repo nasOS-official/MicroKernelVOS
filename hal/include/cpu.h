@@ -21,10 +21,14 @@ typedef struct syscall_frame {
     uint64_t arg6;
 } syscall_frame;
 
+typedef struct syscall_ret {
+    intptr_t result;
+    struct task_control_block_t* task;
+} syscall_ret;
 
 
 void cpu_init(uint32_t cpu);
-int64_t syscall_handler(struct syscall_frame* regs);
+syscall_ret syscall_handler(struct syscall_frame* regs);
 
 
 struct task_control_block_t;

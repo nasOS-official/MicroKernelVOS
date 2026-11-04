@@ -81,7 +81,9 @@ void thread2(void){
     volatile uint64_t a = 0;
     for(;;){
         syscall6(993, (int64_t)string, 0, 0, 0, 0, 0);
-
+        if (a % 10 == 0){
+            syscall6(99, 0, 0, 0, 0, 0, 0);
+        }
         // for (uint64_t x = 0; x < 1000*4096; x++){
         //     *((uint8_t*)addr + x) = (uint8_t)rand();
         // }
@@ -93,13 +95,16 @@ void _start(void){
 
     void* addr = (void*)syscall6(31, 0x1000000000, 10, 0, 0, 0, 0);
     char* string = "thread1 print";
-    syscall6(90, 1, (uint64_t)&thread2, (uint64_t)addr + 0x2000, 0, 0, 0);
+    int64_t pid = syscall6(64, 0, 0, 0, 0, 0, 0);
+    syscall6(90, pid, (uint64_t)&thread2, (uint64_t)addr + 0x2000, 0, 0, 0);
 
 
     volatile uint64_t a = 0;
     for(;;){
         syscall6(993, (int64_t)string, 0, 0, 0, 0, 0);
-
+        if (a % 10 == 0){
+            syscall6(99, 0, 0, 0, 0, 0, 0);
+        }
         // for (uint64_t x = 0; x < 1000*4096; x++){
         //     *((uint8_t*)addr + x) = (uint8_t)rand();
         // }

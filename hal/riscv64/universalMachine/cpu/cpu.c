@@ -65,9 +65,11 @@ struct hw_context_data_t* rv64_ctrap_handler(struct hw_context_data_t* context){
                         .arg6 = context->a5,
                     };
 
-                    context->a0 = syscall_handler(&frame);
                     context->sepc += 4;
-
+                    syscall_ret res = syscall_handler(&frame);
+                    context->a0 = res.result;
+                    struct task_control_block_t *task = res.task;
+                    context = (hw_context_data_t*)(task->kernel_SP);
                     break;
                 }
             default:

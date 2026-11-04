@@ -2,8 +2,11 @@
 #ifndef __SYSCALL_H
 #define __SYSCALL_H
 #include "cpu.h"
+#include "tasks.h"
+#include <stdint.h>
 
-int64_t syscall_handler(struct syscall_frame* regs);
+
+syscall_ret syscall_handler(struct syscall_frame* regs);
 void syscall();
 
 #endif
