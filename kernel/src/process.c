@@ -14,7 +14,6 @@
 #include <cpu.h>
 #include "debug.h"
 
-
 void insert_ready(cpu_core_t* cpu, task_control_block_t* t);
 
 uint32_t process_counter = 1;
@@ -119,6 +118,7 @@ int32_t process_create(){
     return addr->pid;
 }
 
+
 uint64_t thread_create(uint16_t pid, uint8_t* entry_point, uint8_t* stack_pointer, uint8_t priority){
     if (priority >= MAX_PRIORITY){
         return 0;
@@ -137,10 +137,13 @@ uint64_t thread_create(uint16_t pid, uint8_t* entry_point, uint8_t* stack_pointe
         }
     }
 
+    cur_proc->thread_counter++;
+
     addr->tid = ((uint32_t)pid << 16) | ltid;
     addr->process = cur_proc;
     addr->affinity = -1;
     addr->kernel_SP = alloc_kernel_stack();
+    addr->initial_kernel_SP = addr->kernel_SP;
     addr->user_SP = (uint64_t)stack_pointer;
     addr->user_IP = (uint64_t)entry_point;
     addr->state = THREAD_READY;
@@ -183,6 +186,7 @@ task_control_block_t* thread_idle_create(uint32_t cpu_id){
     idle->affinity = cpu_id;
     
     idle->kernel_SP = alloc_kernel_stack();
+    idle->initial_kernel_SP = idle->kernel_SP;
     idle->user_SP = 0;
     idle->user_IP = 0;
     idle->state = THREAD_IDLE;
@@ -194,6 +198,29 @@ task_control_block_t* thread_idle_create(uint32_t cpu_id){
     cpu_list[cpu_id]->current_thread = idle;
     return idle;
     //after this use set_thread_info_ptr on every core to set idle thread as current
+}
+
+intptr_t thread_remove(uint32_t tid){
+    // блокируем работу всех планировщиков, мутекс короче делаем, хотя пока однопоток, можно не делать....
+    if (tid == 0){
+        return -1;
+    }
+    task_control_block_t* thread = thread_getptr(tid);
+    task_control_block_t* current_thread = get_thread_info_ptr();
+    if (current_thread != NULL && thread->process->pid != current_thread->process->pid){
+        return -1;
+    }
+    thread->process->threads_bitmap[tid & 0xFFFF / sizeof(uint64_t)] &= ~(1ULL << (tid % (sizeof(uint64_t) * 8)));
+    thread->process->thread_counter--;
+    thread_setptr(tid, NULL);
+    free_kernel_stack(thread->initial_kernel_SP);
+    //удалить ядерный стек
+    //удалить из планировщика, еще проверить, если поток текущий, значит нужно переключить на другой поток и затем уже удалять, либо брать и помечать поток завершенным, убирать из списка готовых, после чего удалять в какой-то момент поток.
+    //сделать очередь потоков на удаление!!!!! Делаем блокировку этой хрени в момент запуска планировщика, чтобы в нее не полезли другие планировщики, после чего удаляем, если другой планировщик видит, что щас занята эта штука, то просто переходит к выбору задачи. 
+    //удалить поток из очередей планировщика, заблокировать работу планировщиков спинлоком
+    kernel_free(thread);
+    // если потоков 0, то удалить процесс
+    return 0;
 }
 
 
@@ -307,6 +334,8 @@ void insert_ready(cpu_core_t* cpu, task_control_block_t* t) {
     t->state = THREAD_READY;
     cpu->ready_count++;
 }
+
+
 
 task_control_block_t* try_steal_work(cpu_core_t* cpu) {
     uint32_t my_id = cpu->cpu_id;

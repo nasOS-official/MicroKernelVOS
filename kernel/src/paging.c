@@ -541,12 +541,17 @@ uintptr_t mmu_create_top_table(){
 
 
 uint64_t alloc_kernel_stack(){
-    struct Page* phys_page = alloc_pages(2);
+    struct Page* phys_page = alloc_pages(KERNEL_STACK_ORDER);
     if (!phys_page) panic();
 
-    uint64_t paddr = hhdm_request.response->offset + ((phys_page - pages_map) * 0x1000) + 0x1000 * 4;
-    return paddr;
+    uint64_t vaddr = hhdm_request.response->offset + ((phys_page - pages_map) << mmu_layout->levels[0].shift) + mmu_layout->levels[0].page_size * KERNEL_STACK_DEPTH;
+    return vaddr;
 }
+
+void free_kernel_stack(uintptr_t kernel_stack){
+    free_buddy_pages(pages_map + ((kernel_stack - hhdm_request.response->offset - mmu_layout->levels[0].page_size * KERNEL_STACK_DEPTH) >> mmu_layout->levels[0].shift), KERNEL_STACK_ORDER);
+}
+
 
 
 typedef struct alloc_t {

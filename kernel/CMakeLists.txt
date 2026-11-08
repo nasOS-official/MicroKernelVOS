@@ -56,14 +56,14 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/linkerrv64.ld
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(kernel.bin
-    limine_requests/limine_requests.c
-    paging/paging.c
-    syscall/syscall.c
-    panic/panic.c
-    bootstrap/elfloader/elfloader.c
-    process/process.c
-    cpu/cpu.c
-    main.c
+    src/limine_requests.c
+    src/paging.c
+    src/syscall.c
+    src/panic.c
+    src/elfloader/elfloader.c
+    src/process.c
+    src/cpu.c
+    src/main.c
 )
 
 

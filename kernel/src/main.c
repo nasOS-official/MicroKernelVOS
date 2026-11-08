@@ -5,7 +5,7 @@
 #include <limine.h>
 #include "cpu.h"
 #include "debug.h"
-#include "include/tasks.h"
+#include "tasks.h"
 #include "mmu.h"
 #include "paging.h"
 #include <snprintf.h>
@@ -14,7 +14,7 @@
 #include <limine_requests.h>
 #include <syscall.h>
 #include <panic.h>
-#include "bootstrap/elfloader/elf.h"
+#include "elfloader/elf.h"
 #include <cpui.h>
 
 

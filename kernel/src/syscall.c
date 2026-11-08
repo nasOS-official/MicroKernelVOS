@@ -38,7 +38,7 @@ syscall_ret syscall_handler(struct syscall_frame* regs){
             return (syscall_ret){0, sched_handler()};
         case 993:
             log_string("[APP] ");
-            log_string((char*)regs->arg1);
+            log_string((char*)regs->arg1); //Vulnerability: the program can pass an address from kernel space or even from any region of physical memory via the HHDM, potentially leading to the leakage of sensitive information.
             log_string("\n\r");
             return (syscall_ret){0, get_thread_info_ptr()};
         default:

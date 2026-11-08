@@ -38,6 +38,7 @@ typedef struct process_t {
     uint64_t shared_counter; // shared memory in pages
     struct task_control_block_t** threads_table_l1[64];
     uint64_t threads_bitmap[MAX_THREADS_PER_PROC / sizeof(uint64_t) / 8];
+    uint16_t thread_counter;
     struct hw_data_t hw_data;
 } process_t;
 
@@ -48,6 +49,7 @@ typedef struct task_control_block_t {
     uint64_t kernel_SP;
     uint64_t user_SP;
     uint64_t user_IP;
+    uint64_t initial_kernel_SP;
     int64_t affinity;
     thread_state_t state;
     uint64_t wait_for_tick; // 0 to disable wait

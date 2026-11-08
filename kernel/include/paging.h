@@ -11,6 +11,9 @@
 #define MAX_ORDER 11
 #endif
 
+#define KERNEL_STACK_ORDER 2
+#define KERNEL_STACK_DEPTH (1 << KERNEL_STACK_ORDER)
+
 // ALLOC/FREE FLAGS
 
 
@@ -73,6 +76,8 @@ uintptr_t map_hardware_user(uintptr_t top_table, process_t* process, uintptr_t u
 uintptr_t mmu_create_top_table();
 
 uint64_t alloc_kernel_stack();
+void free_kernel_stack(uintptr_t kernel_stack);
+
 
 void* kernel_malloc(uint64_t size);
 void* kernel_zalloc(uint64_t size);
